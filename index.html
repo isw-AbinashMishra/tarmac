@@ -1,0 +1,1810 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>tarmac</title>
+
+  <!--
+  ============================================================================
+   tarmac — a personal developer dashboard  ("baseplate" spec, v1)
+  ============================================================================
+   A single static HTML file. No backend, no build step, no framework.
+   Open it directly (file://) or host it anywhere static.
+
+   ── HOW STATE WORKS ────────────────────────────────────────────────────────
+   * There is ONE source-of-truth object: `state` (see STATE SCHEMA below).
+   * On boot we load `state` from localStorage key "tarmac:state". If nothing
+     is stored yet, we seed it from the CONFIG object at the top of the JS.
+   * Every mutation goes through mutate(): it changes state, saves (debounced),
+     and re-renders. Renders are driven purely from `state`.
+   * localStorage is browser-bound, so the REAL backup is Export/Import JSON.
+   * If a save fails (quota exceeded) we surface a non-blocking toast and keep
+     your in-memory state — nothing is lost until you close the tab.
+
+   ── STATE SCHEMA (localStorage: "tarmac:state") ─────────────────────────────
+   state = {
+     version: number,              // for future migrations
+     theme:   "system"|"light"|"dark",
+
+     applets: {                    // which applets show, and in what order
+       order:    [ "clock", "quota", ... ],   // applet ids, top-to-bottom
+       disabled: [ "..." ]                     // applet ids to hide
+     },
+
+     // ── Applet: bookmarks ───────────────────────────────────────────────
+     bookmarkGroups: [
+       { id, label, links: [ { id, label, url, icon? } ] }
+       //   icon is an optional emoji/character shown as the tile glyph
+     ],
+
+     // ── Applet: todo ────────────────────────────────────────────────────
+     todos: [ { id, text, done, due? } ],   // array order IS display order
+
+     // ── Applet: quota ───────────────────────────────────────────────────
+     quotas: [
+       { id, label, unit, monthlyLimit, used, resetDay, source:"manual" }
+     ],
+
+     // ── Applet: blockers (waiting-on) ───────────────────────────────────
+     blockers: [ { id, item, who, since } ],   // since = ISO timestamp on add
+
+     // ── Applet: decisions (lightweight ADR log) ─────────────────────────
+     decisions: [ { id, date, decision, why } ],   // date = "YYYY-MM-DD"
+
+     // ── Applet: snippets (command stash) ────────────────────────────────
+     snippets: [ { id, label, snippet, tag } ],
+
+     // ── Applet: deepwork (pomodoro settings; counts are day-scoped) ──────
+     deepwork: { focusMin: 50, breakMin: 10 },
+
+     // ── DAY-SCOPED STATE ────────────────────────────────────────────────
+     // Applets that reset each day store their data under a date key.
+     // We compute today's key on load/tick, so rollover at local midnight is
+     // automatic. Past days are kept (for history) but pruned after 30 days.
+     daily: {
+       "YYYY-MM-DD": {
+         standup:  { text: "" },                        // applet: standup
+         deepwork: { blocks: 0, interruptions: 0 },     // applet: deepwork
+         tally:    { meetingHours: 0, focusHours: 0 }   // applet: tally
+       }
+     }
+   }
+
+   ── APPLET ARCHITECTURE ─────────────────────────────────────────────────────
+   Every card on the grid is a registered applet. An applet is a small object:
+
+     registerApplet({
+       id:    "myapplet",       // unique; also the key used in applets.order
+       title: "My Applet",      // shown in the card header
+       wide:  false,            // true => spans two grid columns
+       mount(card) { ... },     // build the card body ONCE + wire events
+       render(card) { ... },    // refresh the dynamic region from `state`
+       tick(card)  { ... }      // OPTIONAL: called ~1×/sec (clock, timer)
+     });
+
+   Ordering + enabling is config-driven: state.applets.order / .disabled
+   (seeded from CONFIG.applets, overridable by an imported JSON).
+
+   HOW TO ADD A NEW APPLET (no need to touch unrelated code):
+     1. If it stores data, add a slice to CONFIG + normalizeState() (or, for a
+        day-scoped applet, add a factory to DAILY_DEFAULTS and use day("myid")).
+     2. Call registerApplet({...}) in the "APPLET DEFINITIONS" section.
+     3. Add its id to CONFIG.applets.order (and to your saved state / JSON).
+     That's it — the framework builds the card, mounts it, and renders it.
+
+   ── FUTURE: live data ───────────────────────────────────────────────────────
+   Quotas are computed by computeQuota(q) purely from {monthlyLimit, used,
+   resetDay}. To wire a live source later, add a data-source adapter that sets
+   q.used from a fetch() before render (keyed off q.source, e.g. "github") — no
+   other code needs to change. (Live fetching is intentionally out of scope for
+   a file:// app: it needs external APIs + secrets that don't belong here.)
+
+   ── README / help is also in the collapsible panel at the bottom of the page,
+      and in README.md next to this file.
+  ============================================================================
+  -->
+
+  <style>
+    /* ========================================================================
+       Design tokens — shadcn-inspired "zinc" palette expressed as HSL triples.
+       Light is the default in :root; .dark (toggled on <html>) overrides.
+       ===================================================================== */
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 3.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 240 10% 3.9%;
+      --muted: 240 4.8% 95.9%;
+      --muted-foreground: 240 3.8% 46.1%;
+      --border: 240 5.9% 90%;
+      --input: 240 5.9% 90%;
+      --primary: 240 5.9% 10%;
+      --primary-foreground: 0 0% 98%;
+      --accent: 240 4.8% 95.9%;
+      --accent-foreground: 240 5.9% 10%;
+      --ring: 240 5% 65%;
+
+      --ok: 142 71% 40%;
+      --warn: 38 92% 45%;
+      --danger: 0 72% 48%;
+
+      --radius: 0.65rem;
+      --shadow: 0 1px 2px 0 hsl(240 10% 3.9% / 0.06),
+                0 1px 3px 0 hsl(240 10% 3.9% / 0.10);
+    }
+    html.dark {
+      --background: 240 10% 3.9%;
+      --foreground: 0 0% 98%;
+      --card: 240 8% 7%;
+      --card-foreground: 0 0% 98%;
+      --muted: 240 4% 16%;
+      --muted-foreground: 240 5% 65%;
+      --border: 240 4% 18%;
+      --input: 240 4% 18%;
+      --primary: 0 0% 98%;
+      --primary-foreground: 240 5.9% 10%;
+      --accent: 240 4% 16%;
+      --accent-foreground: 0 0% 98%;
+      --ring: 240 5% 45%;
+
+      --ok: 142 65% 45%;
+      --warn: 38 92% 55%;
+      --danger: 0 72% 58%;
+
+      --shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.4),
+                0 2px 6px 0 hsl(0 0% 0% / 0.35);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+            Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    :focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+      border-radius: calc(var(--radius) - 2px);
+    }
+    a { color: inherit; text-decoration: none; }
+    h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+
+    /* --- layout ------------------------------------------------------------ */
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
+
+    header.top {
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap; margin-bottom: 20px;
+    }
+    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand h1 { font-size: 22px; }
+    .brand .dot { color: hsl(var(--muted-foreground)); }
+    .brand .tag { color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .spacer { flex: 1 1 auto; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .card--wide { grid-column: span 2; }
+    @media (max-width: 720px) { .card--wide { grid-column: span 1; } }
+
+    /* --- card -------------------------------------------------------------- */
+    .card {
+      background: hsl(var(--card));
+      color: hsl(var(--card-foreground));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card > .card-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 16px;
+      border-bottom: 1px solid hsl(var(--border));
+    }
+    .card-head h2 { font-size: 14px; }
+    .card-head .sub { color: hsl(var(--muted-foreground)); font-size: 12px; }
+    .card-head .spacer { flex: 1; }
+    .card-head [data-head] { display: inline-flex; gap: 6px; align-items: center; }
+    .card-body { padding: 14px 16px; }
+
+    /* --- buttons / inputs (shadcn-ish) ------------------------------------- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 34px; padding: 0 12px;
+      font-size: 13px; font-weight: 500; white-space: nowrap;
+      border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) - 2px);
+      background: hsl(var(--card));
+      color: hsl(var(--card-foreground));
+      cursor: pointer; user-select: none;
+      transition: background .12s ease, border-color .12s ease, opacity .12s;
+    }
+    .btn:hover { background: hsl(var(--accent)); }
+    .btn:active { transform: translateY(0.5px); }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .btn--primary {
+      background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+      border-color: hsl(var(--primary));
+    }
+    .btn--primary:hover { opacity: .9; background: hsl(var(--primary)); }
+    .btn--ghost { border-color: transparent; background: transparent; }
+    .btn--ghost:hover { background: hsl(var(--accent)); }
+    .btn--icon { width: 34px; padding: 0; }
+    .btn--sm { height: 28px; padding: 0 8px; font-size: 12px; }
+    .btn--sm.btn--icon { width: 28px; }
+    .btn--danger:hover { color: hsl(var(--danger)); }
+
+    .input, .select, .textarea {
+      height: 34px; width: 100%;
+      padding: 0 10px;
+      font: inherit; font-size: 13px; color: inherit;
+      background: hsl(var(--background));
+      border: 1px solid hsl(var(--input));
+      border-radius: calc(var(--radius) - 2px);
+    }
+    .textarea { height: auto; min-height: 84px; padding: 8px 10px; line-height: 1.5; resize: vertical; }
+    .input::placeholder, .textarea::placeholder { color: hsl(var(--muted-foreground)); }
+    label.field { display: block; margin-bottom: 10px; }
+    label.field > span { display: block; font-size: 12px; margin-bottom: 4px;
+      color: hsl(var(--muted-foreground)); }
+
+    .row { display: flex; gap: 8px; align-items: center; }
+    .muted { color: hsl(var(--muted-foreground)); }
+    .empty { color: hsl(var(--muted-foreground)); font-size: 13px; padding: 8px 2px; }
+
+    /* --- badges ------------------------------------------------------------ */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; line-height: 1;
+      padding: 4px 8px; border-radius: 999px;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--muted));
+      color: hsl(var(--muted-foreground));
+    }
+    .badge.dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: currentColor; }
+    .badge--ok { color: hsl(var(--ok)); border-color: hsl(var(--ok) / .35);
+      background: hsl(var(--ok) / .12); }
+    .badge--warn { color: hsl(var(--warn)); border-color: hsl(var(--warn) / .35);
+      background: hsl(var(--warn) / .12); }
+    .badge--danger { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .35);
+      background: hsl(var(--danger) / .12); }
+
+    /* --- bookmarks --------------------------------------------------------- */
+    .bm-group { margin-bottom: 16px; }
+    .bm-group:last-child { margin-bottom: 0; }
+    .bm-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .bm-group-head h3 { font-size: 12px; text-transform: uppercase;
+      letter-spacing: .06em; color: hsl(var(--muted-foreground)); }
+    .bm-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .bm-tile {
+      position: relative;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px; border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) - 2px);
+      background: hsl(var(--background));
+      transition: background .12s, border-color .12s, transform .05s;
+    }
+    .bm-tile:hover { background: hsl(var(--accent)); border-color: hsl(var(--ring) / .5); }
+    .bm-tile .glyph {
+      flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px;
+      display: grid; place-items: center; font-size: 16px;
+      background: hsl(var(--muted)); color: hsl(var(--foreground));
+      font-weight: 600;
+    }
+    .bm-tile .meta { min-width: 0; }
+    .bm-tile .meta .lbl { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bm-tile .meta .href { font-size: 11px; color: hsl(var(--muted-foreground));
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bm-tile .edit {
+      position: absolute; top: 4px; right: 4px; opacity: 0;
+      transition: opacity .12s;
+    }
+    .bm-tile:hover .edit, .bm-tile:focus-within .edit { opacity: 1; }
+    .placeholder-url { color: hsl(var(--warn)); }
+
+    /* --- todos ------------------------------------------------------------- */
+    .todo-add { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .todo-add .input:first-child { flex: 1; min-width: 140px; }
+    ul.todos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    li.todo {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px; border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) - 2px);
+      background: hsl(var(--background));
+    }
+    li.todo.dragging { opacity: .4; }
+    li.todo.drop-before { box-shadow: 0 -2px 0 0 hsl(var(--ring)); }
+    li.todo.drop-after { box-shadow: 0 2px 0 0 hsl(var(--ring)); }
+    li.todo .handle { cursor: grab; color: hsl(var(--muted-foreground));
+      padding: 2px 4px; user-select: none; }
+    li.todo .handle:active { cursor: grabbing; }
+    li.todo .txt { flex: 1; min-width: 0; word-break: break-word; }
+    li.todo.done .txt { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
+    li.todo input[type=checkbox] { width: 16px; height: 16px; accent-color: hsl(var(--primary)); }
+    .due { font-size: 11px; }
+    .due.overdue { color: hsl(var(--danger)); }
+    .todo-actions { display: flex; gap: 2px; }
+
+    /* --- quota ------------------------------------------------------------- */
+    .quota { padding: 12px 0; border-bottom: 1px solid hsl(var(--border)); }
+    .quota:first-child { padding-top: 0; }
+    .quota:last-child { border-bottom: 0; padding-bottom: 0; }
+    .quota-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .quota-head .lbl { font-weight: 600; }
+    .quota-head .spacer { flex: 1; }
+    .quota-nums { font-size: 12px; color: hsl(var(--muted-foreground)); margin-bottom: 6px; }
+    .quota-nums b { color: hsl(var(--foreground)); font-weight: 600; }
+    .bar {
+      position: relative; height: 8px; border-radius: 999px;
+      background: hsl(var(--muted)); overflow: visible; margin-bottom: 8px;
+    }
+    .bar__fill { position: absolute; inset: 0 auto 0 0; height: 100%;
+      border-radius: 999px; background: hsl(var(--primary)); transition: width .3s; }
+    .bar__fill.warn { background: hsl(var(--warn)); }
+    .bar__fill.danger { background: hsl(var(--danger)); }
+    .bar__mark { position: absolute; top: -3px; bottom: -3px; width: 2px;
+      background: hsl(var(--foreground)); border-radius: 2px; }
+    .quota-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+
+    /* --- clock ------------------------------------------------------------- */
+    .clock { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .clock .time { font-size: 40px; font-weight: 700; letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums; }
+    .clock .date { color: hsl(var(--muted-foreground)); font-size: 15px; }
+    .month-left { margin-top: 12px; }
+    .month-left .bar { margin-top: 8px; }
+
+    /* --- generic list (blockers / decisions / snippets) -------------------- */
+    .filter-row { margin-bottom: 12px; }
+    ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    li.item {
+      padding: 10px; border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) - 2px); background: hsl(var(--background));
+    }
+    li.item .item-head { display: flex; align-items: center; gap: 8px; }
+    li.item .item-head .spacer { flex: 1; }
+    li.item .title { font-weight: 500; word-break: break-word; }
+    li.item .meta { font-size: 12px; color: hsl(var(--muted-foreground)); }
+    li.item .body { margin-top: 4px; word-break: break-word; }
+
+    /* --- snippets ---------------------------------------------------------- */
+    .snippet pre {
+      margin: 6px 0 0; padding: 8px 10px; border-radius: calc(var(--radius) - 2px);
+      background: hsl(var(--muted)); overflow-x: auto;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .snippet .tag { font-size: 11px; }
+
+    /* --- standup ----------------------------------------------------------- */
+    .standup-head { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+    .standup-head .select { width: auto; min-width: 150px; }
+    .standup-head .spacer { flex: 1; }
+    .standup textarea { min-height: 150px; }
+    .standup .foot { margin-top: 8px; }
+
+    /* --- deep-work timer --------------------------------------------------- */
+    .timer { text-align: center; padding: 6px 0 2px; }
+    .timer .phase { font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+      color: hsl(var(--muted-foreground)); }
+    .timer .count { font-size: 52px; font-weight: 700; letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums; line-height: 1.1; margin: 2px 0 10px; }
+    .timer .count.break { color: hsl(var(--ok)); }
+    .timer-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .dw-stats { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+    .dw-stat { text-align: center; padding: 8px 14px; border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) - 2px); background: hsl(var(--background)); min-width: 92px; }
+    .dw-stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+    .dw-stat span { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+    /* --- meeting/focus tally ---------------------------------------------- */
+    .tally-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .counter { text-align: center; padding: 10px; border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) - 2px); background: hsl(var(--background)); }
+    .counter .lbl { font-size: 12px; color: hsl(var(--muted-foreground)); }
+    .counter .val { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 4px 0 8px; }
+    .counter .ctrls { display: flex; gap: 6px; justify-content: center; }
+    .tally-ratio { text-align: center; margin: 12px 0 4px; font-size: 13px; }
+    .spark7 { display: flex; gap: 6px; align-items: flex-end; height: 48px; margin-top: 4px; }
+    .spark7 .day { flex: 1; display: flex; gap: 2px; align-items: flex-end; height: 100%; }
+    .spark7 .day .b { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; background: hsl(var(--muted)); }
+    .spark7 .day .b.mtg { background: hsl(var(--warn)); }
+    .spark7 .day .b.foc { background: hsl(var(--ok)); }
+    .spark7-lbls { display: flex; gap: 6px; margin-top: 4px; }
+    .spark7-lbls span { flex: 1; text-align: center; font-size: 10px; color: hsl(var(--muted-foreground)); }
+    .spark-legend { display: flex; gap: 12px; justify-content: center; font-size: 11px;
+      color: hsl(var(--muted-foreground)); margin-top: 8px; }
+    .spark-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+
+    /* --- dialog ------------------------------------------------------------ */
+    dialog {
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      background: hsl(var(--card));
+      color: hsl(var(--card-foreground));
+      padding: 0; width: min(460px, calc(100vw - 32px));
+      box-shadow: 0 10px 40px hsl(0 0% 0% / .35);
+    }
+    dialog::backdrop { background: hsl(0 0% 0% / .5); }
+    dialog .dlg-head { padding: 16px 16px 0; }
+    dialog .dlg-head h3 { font-size: 16px; }
+    dialog .dlg-body { padding: 16px; max-height: 70vh; overflow-y: auto; }
+    dialog .dlg-foot { display: flex; justify-content: flex-end; gap: 8px;
+      padding: 0 16px 16px; }
+
+    /* --- toasts ------------------------------------------------------------ */
+    .toast-wrap { position: fixed; right: 16px; bottom: 16px; z-index: 60;
+      display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px)); }
+    .toast {
+      padding: 10px 12px; border-radius: calc(var(--radius) - 2px);
+      border: 1px solid hsl(var(--border)); background: hsl(var(--card));
+      box-shadow: var(--shadow); font-size: 13px;
+      animation: toast-in .16s ease; }
+    .toast--danger { border-color: hsl(var(--danger) / .5); }
+    .toast--ok { border-color: hsl(var(--ok) / .5); }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+
+    /* --- readme panel ------------------------------------------------------ */
+    details.readme { margin-top: 24px; }
+    details.readme > summary { cursor: pointer; color: hsl(var(--muted-foreground));
+      font-size: 13px; padding: 8px 0; }
+    details.readme .card-body { font-size: 13px; }
+    details.readme h4 { margin: 14px 0 4px; font-size: 13px; }
+    details.readme code { background: hsl(var(--muted)); padding: 1px 5px;
+      border-radius: 4px; font-size: 12px; }
+    details.readme ol, details.readme ul { margin: 4px 0; padding-left: 20px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <h1>tarmac</h1>
+        <span class="dot">•</span>
+        <span class="tag">personal dev dashboard</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="toolbar">
+        <button class="btn btn--icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme">🌓</button>
+        <button class="btn" id="btn-export" title="Download a JSON backup">Export</button>
+        <button class="btn" id="btn-import" title="Restore from a JSON backup">Import</button>
+        <input type="file" id="file-import" accept="application/json,.json" class="sr-only" aria-hidden="true" />
+      </div>
+    </header>
+
+    <!-- Applets are rendered here from the registry, in state.applets.order -->
+    <main class="grid" id="grid"></main>
+
+    <!-- README / help -------------------------------------------------------- -->
+    <details class="readme">
+      <summary>README &amp; help — setup, backup, applets, adding groups &amp; quotas</summary>
+      <div class="card">
+        <div class="card-body">
+          <h4>Set as your Chrome homepage / startup page</h4>
+          <ol>
+            <li>Chrome → <code>⋮</code> → <b>Settings</b> → <b>On startup</b> → “Open a specific page or set of pages”.</li>
+            <li>Click <b>Add a new page</b> and paste this file’s address (e.g. <code>file:///D:/source/tarmac/index.html</code>).</li>
+            <li>For the home button: Settings → <b>Appearance</b> → enable <b>Show home button</b> → enter the same address.</li>
+            <li>Tip: pin the tab (right-click tab → <b>Pin</b>) so it survives restarts.</li>
+          </ol>
+
+          <h4>Backup: how Export / Import works</h4>
+          <p>All data lives in your browser’s localStorage (key <code>tarmac:state</code>), which is
+          per-browser and per-profile. <b>Export</b> downloads a <code>tarmac-backup-*.json</code> snapshot;
+          <b>Import</b> validates and loads one back (replacing current state). A bad file shows an error and
+          leaves your data untouched. Export before switching machines or clearing browser data.</p>
+
+          <h4>Enable / disable / reorder applets</h4>
+          <p>Applets are config-driven. Edit <code>state.applets.order</code> (the list of applet ids,
+          top-to-bottom) and <code>state.applets.disabled</code> (ids to hide). Do it by editing
+          <code>CONFIG.applets</code> in the source for a fresh install, or Export → edit the JSON →
+          Import. Applet ids: <code>clock, quota, deepwork, tally, todo, standup, blockers, snippets,
+          decisions, bookmarks</code>.</p>
+
+          <h4>Add a bookmark group</h4>
+          <ul>
+            <li><b>In-app:</b> click <b>+ Group</b>, then <b>+ Link</b> inside a group. Hover a tile → the pencil edits it.</li>
+            <li><b>In code:</b> edit <code>CONFIG.bookmarkGroups</code> near the top of the JS. Each group is
+              <code>{ label, links: [{ label, url, icon }] }</code>. (CONFIG only seeds a fresh install.)</li>
+          </ul>
+
+          <h4>Add a quota widget</h4>
+          <ul>
+            <li><b>In-app:</b> click <b>+ Add</b> on the Quota card.</li>
+            <li><b>In code:</b> add an object to <code>CONFIG.quotas</code>:
+              <code>{ label:"OpenAI", unit:"$", monthlyLimit:120, used:0, resetDay:1, source:"manual" }</code>.
+              The <b>pace</b> badge compares usage against a straight-line expectation for how far you are
+              into the reset cycle.</li>
+          </ul>
+
+          <h4>Where day-scoped data lives</h4>
+          <p>Standup notes, deep-work counts, and the meeting/focus tally are stored per day under
+          <code>state.daily["YYYY-MM-DD"]</code>. Today’s key is computed on load and on tick, so buffers
+          roll over automatically at local midnight. Past days are kept for history and pruned after 30 days.</p>
+
+          <h4>Add a new applet</h4>
+          <p>See the big comment block at the top of the <code>&lt;script&gt;</code> (“HOW TO ADD A NEW
+          APPLET”): add its state slice, call <code>registerApplet({...})</code>, and add its id to
+          <code>CONFIG.applets.order</code>.</p>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- Generic edit dialog, reused by all applets ------------------------- -->
+  <dialog id="dlg">
+    <form method="dialog">
+      <div class="dlg-head"><h3 id="dlg-title">Edit</h3></div>
+      <div class="dlg-body" id="dlg-body"></div>
+      <div class="dlg-foot">
+        <button class="btn" type="button" id="dlg-cancel">Cancel</button>
+        <button class="btn btn--primary" type="submit" value="ok" id="dlg-ok">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+  <script>
+  "use strict";
+  (function () {
+
+    // ======================================================================
+    //  CONFIG  — defaults used ONLY to seed a fresh install (empty storage).
+    //  After first run, your state is in localStorage: edit in-app, or Import
+    //  a JSON. Everything here is also overridable by an imported JSON file.
+    //  --------------------------------------------------------------------
+    //  Fill in the placeholder URLs below with your real ones. (The app marks
+    //  any "#REPLACE-ME" URL in amber until you set it.)
+    // ======================================================================
+    const CONFIG = {
+      theme: "system", // "system" | "light" | "dark"
+
+      // Which applets are shown, and in what order (top-to-bottom).
+      applets: {
+        order: [
+          "clock", "quota", "deepwork", "tally", "todo",
+          "standup", "blockers", "snippets", "decisions", "bookmarks"
+        ],
+        disabled: []   // e.g. ["decisions"] to hide the decision log
+      },
+
+      // ── Applet: bookmarks ───────────────────────────────────────────────
+      bookmarkGroups: [
+        {
+          label: "Work",
+          links: [
+            { label: "Jira",   url: "#REPLACE-ME", icon: "🧭" },
+            { label: "GitHub", url: "#REPLACE-ME", icon: "🐙" },
+            { label: "Google", url: "https://www.google.com", icon: "🔍" },
+            { label: "Claude", url: "https://claude.ai",      icon: "✳️" }
+          ]
+        }
+      ],
+
+      // ── Applet: todo ────────────────────────────────────────────────────
+      todos: [
+        { text: "Fill in my real bookmark URLs (see README panel)", done: false, due: "" }
+      ],
+
+      // ── Applet: quota ───────────────────────────────────────────────────
+      quotas: [
+        {
+          label: "GitHub credits",
+          unit: "credits",
+          monthlyLimit: 1000,
+          used: 0,
+          resetDay: 1,       // day-of-month the allowance resets (1..28)
+          source: "manual"   // v1 is manual entry; see "FUTURE: live data" in the header
+        }
+      ],
+
+      // ── Applet: blockers (things you're waiting on other people for) ─────
+      blockers: [],
+
+      // ── Applet: snippets (CLI incantations you re-google) ────────────────
+      snippets: [
+        { label: "Reset the dashboard (console)", snippet: "tarmac.reset()", tag: "tarmac" }
+      ],
+
+      // ── Applet: decisions (lightweight ADR log) ─────────────────────────
+      decisions: [
+        { decision: "Keep tarmac a single static file", why: "No build step; works from file:// as a Chrome homepage." }
+      ],
+
+      // ── Applet: deepwork (pomodoro lengths; daily counts are day-scoped) ─
+      deepwork: { focusMin: 50, breakMin: 10 }
+    };
+
+    const STORAGE_KEY = "tarmac:state";
+    const STATE_VERSION = 2;
+    const DAILY_KEEP_DAYS = 30;
+
+    // ======================================================================
+    //  Small utilities
+    // ======================================================================
+    const $  = (sel, root = document) => root.querySelector(sel);
+    const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+
+    function el(tag, cls, html) {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (html != null) n.innerHTML = html;
+      return n;
+    }
+    function debounce(fn, ms) {
+      let t;
+      return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+    }
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    // Only allow safe link schemes; block javascript: etc. "#REPLACE-ME" stays as-is.
+    function safeUrl(url) {
+      const u = String(url || "").trim();
+      if (!u) return "#";
+      if (u.startsWith("#")) return u;
+      if (/^(https?:|mailto:|tel:|\/|\.\/|\.\.\/)/i.test(u)) return u;
+      if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(u)) return "https://" + u; // bare domain
+      return "#";
+    }
+    const isPlaceholder = (url) => String(url || "").trim().startsWith("#REPLACE-ME");
+
+    // Clipboard with a file:// / older-browser fallback.
+    function copyText(text) {
+      const fallback = () => {
+        try {
+          const ta = el("textarea");
+          ta.value = text;
+          ta.style.position = "fixed"; ta.style.opacity = "0";
+          document.body.appendChild(ta); ta.focus(); ta.select();
+          const ok = document.execCommand("copy");
+          ta.remove(); return ok;
+        } catch (_) { return false; }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true, () => fallback());
+      }
+      return Promise.resolve(fallback());
+    }
+
+    // Non-blocking toast.
+    function toast(msg, type, ms) {
+      const wrap = $("#toasts");
+      const t = el("div", "toast" + (type ? " toast--" + type : ""), escapeHtml(msg));
+      wrap.appendChild(t);
+      setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.remove(), 200); }, ms || 3200);
+    }
+
+    // ======================================================================
+    //  Date helpers
+    // ======================================================================
+    const DAY_MS = 86400000;
+    const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const daysInMonthOf = (y, m) => new Date(y, m + 1, 0).getDate();
+    const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+
+    // Local YYYY-MM-DD (NOT toISOString, which is UTC and can shift the day).
+    function dateKey(d = new Date()) {
+      return d.getFullYear() + "-" +
+        String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0");
+    }
+    const todayKey = () => dateKey(new Date());
+
+    // Calendar-month view (used by the Clock card).
+    function monthProgress(now = new Date()) {
+      const total = daysInMonthOf(now.getFullYear(), now.getMonth());
+      const day = now.getDate();
+      const remaining = total - day; // whole days left after today
+      return { total, day, remaining, fraction: day / total };
+    }
+
+    // Billing cycle anchored on resetDay (used by quotas).
+    function billingCycle(resetDay, now = new Date()) {
+      resetDay = Math.min(Math.max(1, resetDay | 0 || 1), 28);
+      const today = startOfDay(now);
+      let sY = today.getFullYear(), sM = today.getMonth();
+      if (today.getDate() < resetDay) { // this month's reset hasn't happened yet
+        sM -= 1; if (sM < 0) { sM = 11; sY -= 1; }
+      }
+      const start = new Date(sY, sM, Math.min(resetDay, daysInMonthOf(sY, sM)));
+      let eY = sY, eM = sM + 1; if (eM > 11) { eM = 0; eY += 1; }
+      const end = new Date(eY, eM, Math.min(resetDay, daysInMonthOf(eY, eM)));
+
+      const daysTotal = Math.round((end - start) / DAY_MS);
+      const daysElapsed = Math.min(daysTotal, Math.max(0, Math.round((today - start) / DAY_MS)));
+      const daysRemaining = Math.max(0, daysTotal - daysElapsed);
+      const fractionElapsed = daysTotal ? daysElapsed / daysTotal : 0;
+      return { start, end, daysTotal, daysElapsed, daysRemaining, fractionElapsed };
+    }
+
+    function ageInDays(iso) {
+      const then = startOfDay(new Date(iso));
+      if (isNaN(then)) return 0;
+      return Math.max(0, Math.round((startOfDay(new Date()) - then) / DAY_MS));
+    }
+    function formatDue(iso) {
+      const d = new Date(iso + "T00:00:00");
+      return isNaN(d) ? iso : d.toLocaleDateString([], { month: "short", day: "numeric" });
+    }
+    function formatMMSS(sec) {
+      sec = Math.max(0, Math.round(sec));
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    }
+    const fmt = (n) => (Number(n) || 0).toLocaleString();
+    // Last n local date keys, oldest first, ending today (DST-safe via setDate).
+    function lastNDays(n) {
+      const base = startOfDay(new Date());
+      const out = [];
+      for (let i = n - 1; i >= 0; i--) out.push(dateKey(addDays(base, -i)));
+      return out;
+    }
+
+    // ======================================================================
+    //  Day-scoped state helpers
+    // ----------------------------------------------------------------------
+    //  Day-scoped applets keep their data under state.daily[YYYY-MM-DD].<id>.
+    //  day("standup") returns today's slice (creating it from DAILY_DEFAULTS).
+    // ======================================================================
+    const DAILY_DEFAULTS = {
+      standup:  () => ({ text: "" }),
+      deepwork: () => ({ blocks: 0, interruptions: 0 }),
+      tally:    () => ({ meetingHours: 0, focusHours: 0 })
+    };
+    function day(appletId, key = todayKey()) {
+      if (!state.daily) state.daily = {};
+      if (!state.daily[key]) state.daily[key] = {};
+      if (!state.daily[key][appletId]) {
+        state.daily[key][appletId] = (DAILY_DEFAULTS[appletId] || (() => ({})))();
+      }
+      return state.daily[key][appletId];
+    }
+    function pruneDaily(keepDays = DAILY_KEEP_DAYS) {
+      if (!state.daily) return;
+      const cutoff = dateKey(addDays(startOfDay(new Date()), -keepDays));
+      Object.keys(state.daily).forEach(k => { if (k < cutoff) delete state.daily[k]; });
+    }
+
+    // ======================================================================
+    //  State: seed / normalize / load / save
+    // ======================================================================
+    function normalizeQuota(q) {
+      return {
+        id: q.id || uid(),
+        label: String(q.label || "Quota"),
+        unit: String(q.unit || ""),
+        monthlyLimit: Number(q.monthlyLimit) || 0,
+        used: Number(q.used) || 0,
+        resetDay: Math.min(Math.max(1, Number(q.resetDay) || 1), 28),
+        source: q.source || "manual"
+      };
+    }
+
+    // Accept an arbitrary object (fresh CONFIG seed or imported file) and make
+    // it safe + complete. Missing sections fall back to sensible empties, so a
+    // partial/older file imports without wiping unrelated data.
+    function normalizeState(raw) {
+      const s = (raw && typeof raw === "object" && !Array.isArray(raw)) ? raw : {};
+      const ap = (s.applets && typeof s.applets === "object") ? s.applets : {};
+
+      const out = {
+        version: STATE_VERSION,
+        theme: ["system", "light", "dark"].includes(s.theme) ? s.theme : "system",
+
+        applets: {
+          order: Array.isArray(ap.order) ? ap.order.map(String) : CONFIG.applets.order.slice(),
+          disabled: Array.isArray(ap.disabled) ? ap.disabled.map(String) : []
+        },
+
+        bookmarkGroups: Array.isArray(s.bookmarkGroups) ? s.bookmarkGroups.map(g => ({
+          id: g.id || uid(), label: String(g.label || "Group"),
+          links: Array.isArray(g.links) ? g.links.map(l => ({
+            id: l.id || uid(), label: String(l.label || ""),
+            url: String(l.url || "#"), icon: String(l.icon || "")
+          })) : []
+        })) : [],
+
+        todos: Array.isArray(s.todos) ? s.todos.map(t => ({
+          id: t.id || uid(), text: String(t.text || ""), done: !!t.done, due: String(t.due || "")
+        })) : [],
+
+        quotas: Array.isArray(s.quotas) ? s.quotas.map(normalizeQuota) : [],
+
+        blockers: Array.isArray(s.blockers) ? s.blockers.map(b => ({
+          id: b.id || uid(), item: String(b.item || ""), who: String(b.who || ""),
+          since: b.since || new Date().toISOString()
+        })) : [],
+
+        decisions: Array.isArray(s.decisions) ? s.decisions.map(d => ({
+          id: d.id || uid(), date: String(d.date || todayKey()),
+          decision: String(d.decision || ""), why: String(d.why || "")
+        })) : [],
+
+        snippets: Array.isArray(s.snippets) ? s.snippets.map(x => ({
+          id: x.id || uid(), label: String(x.label || ""),
+          snippet: String(x.snippet || ""), tag: String(x.tag || "")
+        })) : [],
+
+        deepwork: {
+          focusMin: clampInt((s.deepwork && s.deepwork.focusMin), 1, 240, CONFIG.deepwork.focusMin),
+          breakMin: clampInt((s.deepwork && s.deepwork.breakMin), 1, 120, CONFIG.deepwork.breakMin)
+        },
+
+        daily: normalizeDaily(s.daily)
+      };
+      return out;
+    }
+    function clampInt(v, lo, hi, dflt) {
+      v = Number(v);
+      if (!isFinite(v)) return dflt;
+      return Math.min(hi, Math.max(lo, Math.round(v)));
+    }
+    function normalizeDaily(d) {
+      const out = {};
+      if (d && typeof d === "object") {
+        Object.keys(d).forEach(k => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+          const src = d[k] || {};
+          out[k] = {
+            standup:  { text: String((src.standup && src.standup.text) || "") },
+            deepwork: {
+              blocks: Number(src.deepwork && src.deepwork.blocks) || 0,
+              interruptions: Number(src.deepwork && src.deepwork.interruptions) || 0
+            },
+            tally: {
+              meetingHours: Number(src.tally && src.tally.meetingHours) || 0,
+              focusHours: Number(src.tally && src.tally.focusHours) || 0
+            }
+          };
+        });
+      }
+      return out;
+    }
+
+    // Fresh install: build state from CONFIG, then normalize it.
+    function seedFromConfig() {
+      const seeded = normalizeState({
+        theme: CONFIG.theme,
+        applets: CONFIG.applets,
+        bookmarkGroups: CONFIG.bookmarkGroups,
+        todos: CONFIG.todos,
+        quotas: CONFIG.quotas,
+        blockers: CONFIG.blockers,
+        snippets: CONFIG.snippets,
+        decisions: CONFIG.decisions,
+        deepwork: CONFIG.deepwork,
+        daily: {}
+      });
+      return seeded;
+    }
+
+    function loadState() {
+      let raw = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* storage blocked */ }
+      if (!raw) return seedFromConfig();
+      try {
+        const s = normalizeState(JSON.parse(raw));
+        pruneDailyOn(s);
+        return s;
+      } catch (e) {
+        console.warn("tarmac: corrupt state, reseeding", e);
+        return seedFromConfig();
+      }
+    }
+    function pruneDailyOn(s) {
+      const cutoff = dateKey(addDays(startOfDay(new Date()), -DAILY_KEEP_DAYS));
+      Object.keys(s.daily || {}).forEach(k => { if (k < cutoff) delete s.daily[k]; });
+    }
+
+    let saveWarned = false;
+    function saveNow() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        saveWarned = false;
+      } catch (e) {
+        // Quota exceeded / storage disabled: keep in-memory state, warn once.
+        if (!saveWarned) {
+          saveWarned = true;
+          toast("Couldn’t save to browser storage (full or blocked). Export a backup — your changes stay in memory until you close the tab.", "danger", 7000);
+        }
+        console.warn("tarmac: could not save", e);
+      }
+    }
+    const saveDebounced = debounce(saveNow, 300);
+
+    let state = loadState();
+
+    // Transient UI state (never persisted): timer runtime, standup day view.
+    const ui = {
+      standupDay: todayKey(),
+      timer: { phase: "idle", remaining: 0, running: false, endAt: 0 } // phase: idle|focus|break
+    };
+
+    // Central mutation entry point. opts:
+    //   { render:false }  -> save only, skip re-render (keeps input focus/caret)
+    //   { only:[ids] }    -> re-render just those applets
+    // default -> re-render all mounted applets.
+    function mutate(fn, opts) {
+      opts = opts || {};
+      fn(state);
+      saveDebounced();
+      if (opts.render === false) return;
+      if (opts.only) opts.only.forEach(renderApplet);
+      else renderApplets();
+    }
+
+    // ======================================================================
+    //  Theme
+    // ======================================================================
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    function effectiveTheme() {
+      return state.theme === "system" ? (mql.matches ? "dark" : "light") : state.theme;
+    }
+    function applyTheme() {
+      const t = effectiveTheme();
+      document.documentElement.classList.toggle("dark", t === "dark");
+      document.documentElement.setAttribute("data-theme", t);
+      const b = $("#btn-theme");
+      b.textContent = state.theme === "system" ? "🌓" : (t === "dark" ? "🌙" : "☀️");
+      b.title = "Theme: " + state.theme + " (click to change)";
+    }
+    mql.addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
+    $("#btn-theme").addEventListener("click", () => {
+      const order = ["system", "light", "dark"];
+      mutate(s => { s.theme = order[(order.indexOf(s.theme) + 1) % order.length]; }, { render: false });
+      applyTheme();
+    });
+
+    // ======================================================================
+    //  Dialog helper — resolves to a field map, or null on cancel.
+    //  fields: [{ key, label, type, value, placeholder, min, step, rows }]
+    //  type "textarea" renders a multi-line box; anything else is an <input>.
+    // ======================================================================
+    const dlg = $("#dlg");
+    function fieldHtml(f) {
+      const key = escapeHtml(f.key);
+      if (f.type === "textarea") {
+        return `<label class="field"><span>${escapeHtml(f.label)}</span>
+          <textarea class="textarea" data-key="${key}" rows="${f.rows || 4}"
+            placeholder="${escapeHtml(f.placeholder || "")}">${escapeHtml(f.value != null ? f.value : "")}</textarea></label>`;
+      }
+      return `<label class="field"><span>${escapeHtml(f.label)}</span>
+        <input class="input" data-key="${key}" type="${escapeHtml(f.type || "text")}"
+          value="${escapeHtml(f.value != null ? f.value : "")}"
+          ${f.min != null ? `min="${escapeHtml(f.min)}"` : ""}
+          ${f.step != null ? `step="${escapeHtml(f.step)}"` : ""}
+          placeholder="${escapeHtml(f.placeholder || "")}" /></label>`;
+    }
+    function openDialog(title, fields, okLabel = "Save") {
+      return new Promise((resolve) => {
+        $("#dlg-title").textContent = title;
+        $("#dlg-ok").textContent = okLabel;
+        const body = $("#dlg-body");
+        body.innerHTML = fields.map(fieldHtml).join("");
+
+        const onClose = () => {
+          dlg.removeEventListener("close", onClose);
+          if (dlg.returnValue !== "ok") return resolve(null);
+          const out = {};
+          body.querySelectorAll("[data-key]").forEach(inp => { out[inp.dataset.key] = inp.value; });
+          resolve(out);
+        };
+        dlg.addEventListener("close", onClose);
+        dlg.returnValue = "";
+        dlg.showModal();
+        const first = body.querySelector("input, textarea");
+        if (first) { first.focus(); if (first.select) first.select(); }
+      });
+    }
+    $("#dlg-cancel").addEventListener("click", () => dlg.close("cancel"));
+
+    // ======================================================================
+    //  Applet framework
+    // ----------------------------------------------------------------------
+    //  registerApplet(def) adds a card definition. renderGrid() builds the
+    //  cards from state.applets.order (skipping disabled ones), mounts each
+    //  once, then renders it. mutate() re-renders; a 1s loop drives tick().
+    // ======================================================================
+    const APPLETS = {};                 // id -> definition
+    const mounted = new Map();          // id -> { def, card }
+    const grid = $("#grid");
+
+    function registerApplet(def) { APPLETS[def.id] = def; }
+
+    function buildCard(def) {
+      const card = el("section", "card" + (def.wide ? " card--wide" : ""));
+      card.dataset.applet = def.id;
+      card.setAttribute("aria-label", def.title);
+      card.innerHTML =
+        `<div class="card-head">
+           <h2>${escapeHtml(def.title)}</h2>
+           <span class="sub" data-sub></span>
+           <div class="spacer"></div>
+           <div data-head></div>
+         </div>
+         <div class="card-body" data-body></div>`;
+      return card;
+    }
+    // Convenience accessors for an applet's card regions.
+    const parts = (card) => ({
+      head: card.querySelector("[data-head]"),
+      sub:  card.querySelector("[data-sub]"),
+      body: card.querySelector("[data-body]")
+    });
+
+    function renderGrid() {
+      grid.innerHTML = "";
+      mounted.clear();
+      const order = (state.applets.order || []).filter(id => APPLETS[id]);
+      // Include any registered applet missing from order, at the end.
+      Object.keys(APPLETS).forEach(id => { if (!order.includes(id)) order.push(id); });
+
+      order.forEach(id => {
+        if ((state.applets.disabled || []).includes(id)) return;
+        const def = APPLETS[id];
+        const card = buildCard(def);
+        grid.appendChild(card);
+        if (def.mount) def.mount(card);
+        if (def.render) def.render(card);
+        mounted.set(id, { def, card });
+      });
+    }
+    function renderApplets() { mounted.forEach(m => m.def.render && m.def.render(m.card)); }
+    function renderApplet(id) { const m = mounted.get(id); if (m && m.def.render) m.def.render(m.card); }
+
+    // ======================================================================
+    //  APPLET DEFINITIONS
+    //  Each applet: mount(card) builds + wires once; render(card) refreshes
+    //  from `state`; optional tick(card) runs ~1×/sec.
+    // ======================================================================
+
+    // ---- Applet: Clock ---------------------------------------------------
+    registerApplet({
+      id: "clock", title: "Clock",
+      render(card) {
+        const { body } = parts(card);
+        const now = new Date();
+        const mp = monthProgress(now);
+        const monthName = now.toLocaleDateString([], { month: "long" });
+        body.innerHTML = `
+          <div class="clock">
+            <span class="time">${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <span class="date">${escapeHtml(now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" }))}</span>
+          </div>
+          <div class="month-left">
+            <div class="row"><span class="muted"><b style="color:hsl(var(--foreground))">${mp.remaining}</b> day${mp.remaining === 1 ? "" : "s"} left in ${escapeHtml(monthName)}</span></div>
+            <div class="bar"><div class="bar__fill" style="width:${(mp.fraction * 100).toFixed(1)}%"></div></div>
+          </div>`;
+      },
+      tick(card) { this.render(card); }
+    });
+
+    // ---- Applet: Quota burn-down ----------------------------------------
+    // Pure computation from stored fields — the seam for future live data.
+    function computeQuota(q) {
+      const cycle = billingCycle(q.resetDay);
+      const limit = q.monthlyLimit || 0;
+      const used = q.used || 0;
+      const usedPct = limit > 0 ? (used / limit) * 100 : 0;
+      const expected = limit * cycle.fractionElapsed;          // straight-line pace target
+      const paceRatio = expected > 0 ? used / expected : (used > 0 ? Infinity : 0);
+      const projected = cycle.fractionElapsed > 0 ? used / cycle.fractionElapsed : 0;
+
+      let status, badge;
+      if (limit > 0 && used >= limit)   { status = "over limit";     badge = "danger"; }
+      else if (paceRatio > 1.10)        { status = "over pace";      badge = "danger"; }
+      else if (paceRatio > 1.00)        { status = "slightly over";  badge = "warn"; }
+      else if (used === 0 && expected === 0) { status = "cycle start"; badge = ""; }
+      else                              { status = "on track";       badge = "ok"; }
+
+      return { cycle, limit, used, usedPct, expected, paceRatio, projected, status, badge };
+    }
+    async function editQuota(q) {
+      const isNew = !q; q = q || {};
+      const vals = await openDialog(isNew ? "Add quota" : "Edit quota", [
+        { key: "label", label: "Label", value: q.label || "", placeholder: "e.g. OpenAI" },
+        { key: "unit", label: "Unit (optional)", value: q.unit || "", placeholder: "credits, $, GB…" },
+        { key: "monthlyLimit", label: "Monthly limit", type: "number", min: 0, value: q.monthlyLimit != null ? q.monthlyLimit : "" },
+        { key: "used", label: "Used so far", type: "number", min: 0, value: q.used != null ? q.used : 0 },
+        { key: "resetDay", label: "Reset day of month (1–28)", type: "number", min: 1, value: q.resetDay || 1 }
+      ], isNew ? "Add" : "Save");
+      if (!vals) return;
+      mutate(s => {
+        if (isNew) s.quotas.push(normalizeQuota(vals));
+        else {
+          const t = s.quotas.find(x => x.id === q.id);
+          if (t) Object.assign(t, normalizeQuota({ ...t, ...vals, id: t.id }));
+        }
+      }, { only: ["quota"] });
+    }
+    registerApplet({
+      id: "quota", title: "Quota burn-down",
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => { if (e.target.closest("[data-act=add]")) editQuota(null); });
+        body.addEventListener("click", e => {
+          const wrap = e.target.closest(".quota"); if (!wrap) return;
+          const q = state.quotas.find(x => x.id === wrap.dataset.id); if (!q) return;
+          if (e.target.closest("[data-act=edit]")) editQuota(q);
+          else if (e.target.closest("[data-act=del]") && confirm(`Delete quota “${q.label}”?`))
+            mutate(s => { s.quotas = s.quotas.filter(x => x.id !== q.id); }, { only: ["quota"] });
+        });
+      },
+      render(card) {
+        const { body } = parts(card);
+        if (!state.quotas.length) { body.innerHTML = `<p class="empty">No quotas yet. Click “+ Add”.</p>`; return; }
+        body.innerHTML = state.quotas.map(q => {
+          const c = computeQuota(q);
+          const fillClass = c.badge === "danger" ? "danger" : c.badge === "warn" ? "warn" : "";
+          const unit = q.unit ? " " + escapeHtml(q.unit) : "";
+          const expPct = Math.min(100, c.cycle.fractionElapsed * 100).toFixed(1);
+          return `
+            <div class="quota" data-id="${q.id}">
+              <div class="quota-head">
+                <span class="lbl">${escapeHtml(q.label)}</span>
+                <div class="spacer"></div>
+                <span class="badge dot ${c.badge ? "badge--" + c.badge : ""}">${escapeHtml(c.status)}</span>
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="edit" title="Edit">✏️</button>
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">🗑️</button>
+              </div>
+              <div class="quota-nums"><b>${fmt(c.used)}${unit}</b> of <b>${fmt(c.limit)}${unit}</b> &nbsp;·&nbsp; ${c.usedPct.toFixed(0)}% used</div>
+              <div class="bar" title="Marker shows expected pace (${expPct}% through cycle)">
+                <div class="bar__fill ${fillClass}" style="width:${Math.min(100, c.usedPct).toFixed(1)}%"></div>
+                <div class="bar__mark" style="left:${expPct}%"></div>
+              </div>
+              <div class="quota-foot muted">
+                <span><b style="color:hsl(var(--foreground))">${c.cycle.daysRemaining}</b> day${c.cycle.daysRemaining === 1 ? "" : "s"} left in cycle</span>
+                <span>·</span>
+                <span>projected ~<b style="color:hsl(var(--foreground))">${fmt(Math.round(c.projected))}${unit}</b></span>
+              </div>
+            </div>`;
+        }).join("");
+      }
+    });
+
+    // ---- Applet: To-do ---------------------------------------------------
+    registerApplet({
+      id: "todo", title: "To-do",
+      mount(card) {
+        const { body } = parts(card);
+        body.innerHTML = `
+          <form class="todo-add" data-form>
+            <input class="input" id="todo-input" placeholder="Add a task and press Enter…" autocomplete="off" aria-label="New task" />
+            <input class="input" id="todo-due" type="date" style="width:150px" aria-label="Due date (optional)" />
+            <button class="btn btn--primary" type="submit">Add</button>
+          </form>
+          <ul class="todos" data-list></ul>`;
+        const list = body.querySelector("[data-list]");
+
+        body.querySelector("[data-form]").addEventListener("submit", e => {
+          e.preventDefault();
+          const input = body.querySelector("#todo-input"), dueEl = body.querySelector("#todo-due");
+          const text = input.value.trim(); if (!text) return;
+          const due = dueEl.value || "";
+          mutate(s => { s.todos.push({ id: uid(), text, done: false, due }); }, { only: ["todo"] });
+          input.value = ""; dueEl.value = ""; input.focus();
+        });
+        list.addEventListener("click", e => {
+          const li = e.target.closest("li.todo"); if (!li) return;
+          const idx = state.todos.findIndex(t => t.id === li.dataset.id); if (idx < 0) return;
+          if (e.target.closest("[data-act=del]")) mutate(s => { s.todos.splice(idx, 1); }, { only: ["todo"] });
+          else if (e.target.closest("[data-act=up]")) moveTodo(idx, idx - 1);
+          else if (e.target.closest("[data-act=down]")) moveTodo(idx, idx + 1);
+        });
+        list.addEventListener("change", e => {
+          if (!e.target.matches("input[type=checkbox]")) return;
+          const li = e.target.closest("li.todo"); const id = li && li.dataset.id;
+          mutate(s => { const t = s.todos.find(x => x.id === id); if (t) t.done = e.target.checked; }, { only: ["todo"] });
+        });
+        wireTodoDrag(list);
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const list = body.querySelector("[data-list]");
+        const open = state.todos.filter(t => !t.done).length;
+        sub.textContent = `${open} open`;
+        if (!state.todos.length) { list.innerHTML = `<li class="empty">Nothing here yet — add a task above.</li>`; return; }
+        const today = todayKey();
+        list.innerHTML = state.todos.map((t, i) => {
+          const overdue = t.due && !t.done && t.due < today;
+          const dueLabel = t.due ? `<span class="due badge ${overdue ? "overdue badge--danger" : ""}">${escapeHtml(formatDue(t.due))}</span>` : "";
+          return `
+            <li class="todo ${t.done ? "done" : ""}" draggable="true" data-id="${t.id}">
+              <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+              <input type="checkbox" ${t.done ? "checked" : ""} aria-label="Complete" />
+              <span class="txt">${escapeHtml(t.text)}</span>
+              ${dueLabel}
+              <span class="todo-actions">
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="up" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="down" title="Move down" ${i === state.todos.length - 1 ? "disabled" : ""}>↓</button>
+                <button class="btn btn--ghost btn--sm btn--icon btn--danger" data-act="del" title="Delete">✕</button>
+              </span>
+            </li>`;
+        }).join("");
+      }
+    });
+    function moveTodo(from, to) {
+      if (to < 0 || to >= state.todos.length) return;
+      mutate(s => { const [item] = s.todos.splice(from, 1); s.todos.splice(to, 0, item); }, { only: ["todo"] });
+    }
+    // HTML5 drag-and-drop reorder for the to-do list.
+    function wireTodoDrag(list) {
+      let dragId = null;
+      list.addEventListener("dragstart", e => {
+        const li = e.target.closest("li.todo"); if (!li) return;
+        dragId = li.dataset.id; li.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", dragId); } catch (_) {}
+      });
+      list.addEventListener("dragend", () => {
+        dragId = null;
+        list.querySelectorAll("li.todo").forEach(li => li.classList.remove("dragging", "drop-before", "drop-after"));
+      });
+      list.addEventListener("dragover", e => {
+        e.preventDefault();
+        const li = e.target.closest("li.todo"); if (!li || li.dataset.id === dragId) return;
+        const before = (e.clientY - li.getBoundingClientRect().top) < li.offsetHeight / 2;
+        list.querySelectorAll("li.todo").forEach(x => x.classList.remove("drop-before", "drop-after"));
+        li.classList.add(before ? "drop-before" : "drop-after");
+      });
+      list.addEventListener("drop", e => {
+        e.preventDefault();
+        const li = e.target.closest("li.todo"); if (!li || !dragId) return;
+        const from = state.todos.findIndex(t => t.id === dragId);
+        let to = state.todos.findIndex(t => t.id === li.dataset.id);
+        if (from < 0 || to < 0 || from === to) return;
+        const before = (e.clientY - li.getBoundingClientRect().top) < li.offsetHeight / 2;
+        if (!before) to += 1;
+        if (from < to) to -= 1;
+        moveTodo(from, to);
+      });
+    }
+
+    // ---- Applet: Deep-work timer ----------------------------------------
+    // Timer runtime is transient (ui.timer); only per-day counts persist.
+    function timerStart() {
+      const t = ui.timer;
+      if (t.phase === "idle") { t.phase = "focus"; t.remaining = state.deepwork.focusMin * 60; }
+      t.running = true; t.endAt = Date.now() + t.remaining * 1000;
+      renderApplet("deepwork");
+    }
+    function timerPause() {
+      const t = ui.timer; if (!t.running) return;
+      t.remaining = Math.max(0, Math.round((t.endAt - Date.now()) / 1000));
+      t.running = false; renderApplet("deepwork");
+    }
+    function timerReset() {
+      ui.timer = { phase: "idle", remaining: state.deepwork.focusMin * 60, running: false, endAt: 0 };
+      renderApplet("deepwork");
+    }
+    function timerComplete() {
+      const t = ui.timer;
+      if (t.phase === "focus") {
+        mutate(s => { day("deepwork").blocks += 1; }, { only: ["deepwork"] });
+        toast("Focus block complete 🎉  Break time.", "ok");
+        t.phase = "break"; t.remaining = state.deepwork.breakMin * 60;
+        t.endAt = Date.now() + t.remaining * 1000; t.running = true;
+      } else { // break finished
+        toast("Break over — ready for another block.", "ok");
+        ui.timer = { phase: "idle", remaining: state.deepwork.focusMin * 60, running: false, endAt: 0 };
+      }
+      renderApplet("deepwork");
+    }
+    registerApplet({
+      id: "deepwork", title: "Deep-work timer",
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--ghost btn--sm btn--icon" data-act="settings" title="Timer settings">⚙️</button>`;
+        head.addEventListener("click", async e => {
+          if (!e.target.closest("[data-act=settings]")) return;
+          const vals = await openDialog("Timer settings", [
+            { key: "focusMin", label: "Focus minutes", type: "number", min: 1, value: state.deepwork.focusMin },
+            { key: "breakMin", label: "Break minutes", type: "number", min: 1, value: state.deepwork.breakMin }
+          ], "Save");
+          if (!vals) return;
+          mutate(s => {
+            s.deepwork.focusMin = clampInt(vals.focusMin, 1, 240, s.deepwork.focusMin);
+            s.deepwork.breakMin = clampInt(vals.breakMin, 1, 120, s.deepwork.breakMin);
+          }, { render: false });
+          if (ui.timer.phase === "idle") ui.timer.remaining = state.deepwork.focusMin * 60;
+          renderApplet("deepwork");
+        });
+        body.addEventListener("click", e => {
+          if (e.target.closest("[data-act=start]")) { ui.timer.running ? timerPause() : timerStart(); }
+          else if (e.target.closest("[data-act=reset]")) timerReset();
+          else if (e.target.closest("[data-act=interrupt]"))
+            mutate(s => { day("deepwork").interruptions += 1; }, { only: ["deepwork"] });
+        });
+      },
+      render(card) {
+        const { body } = parts(card);
+        const t = ui.timer;
+        const remaining = t.running ? Math.max(0, Math.round((t.endAt - Date.now()) / 1000))
+          : (t.remaining || state.deepwork.focusMin * 60);
+        const d = day("deepwork");
+        const phaseLabel = t.phase === "break" ? "Break" : (t.phase === "focus" ? "Focus" : "Ready");
+        const startLabel = t.running ? "Pause" : (t.phase === "idle" ? "Start focus" : "Resume");
+        body.innerHTML = `
+          <div class="timer">
+            <div class="phase">${phaseLabel} · ${state.deepwork.focusMin}/${state.deepwork.breakMin}</div>
+            <div class="count ${t.phase === "break" ? "break" : ""}">${formatMMSS(remaining)}</div>
+            <div class="timer-controls">
+              <button class="btn btn--primary" data-act="start">${startLabel}</button>
+              <button class="btn" data-act="reset">Reset</button>
+              <button class="btn" data-act="interrupt" ${t.phase === "focus" && t.running ? "" : "disabled"} title="Log an interruption">+1 interruption</button>
+            </div>
+            <div class="dw-stats">
+              <div class="dw-stat"><b>${d.blocks}</b><span>focus blocks today</span></div>
+              <div class="dw-stat"><b>${d.interruptions}</b><span>interruptions today</span></div>
+            </div>
+          </div>`;
+      },
+      tick(card) { if (ui.timer.running) { if ((ui.timer.endAt - Date.now()) <= 0) timerComplete(); else this.render(card); } }
+    });
+
+    // ---- Applet: Meeting / focus tally ----------------------------------
+    registerApplet({
+      id: "tally", title: "Meeting / focus tally",
+      mount(card) {
+        const { body } = parts(card);
+        body.addEventListener("click", e => {
+          const btn = e.target.closest("[data-field]"); if (!btn) return;
+          const field = btn.dataset.field, delta = Number(btn.dataset.delta);
+          mutate(s => {
+            const d = day("tally");
+            d[field] = Math.max(0, Math.round((d[field] + delta) * 2) / 2);
+          }, { only: ["tally"] });
+        });
+      },
+      render(card) {
+        const { body } = parts(card);
+        const d = day("tally");
+        const ratio = d.meetingHours > 0 ? (d.focusHours / d.meetingHours).toFixed(2) + "×"
+          : (d.focusHours > 0 ? "all focus" : "—");
+        const days = lastNDays(7).map(k => {
+          const td = (state.daily[k] && state.daily[k].tally) || { meetingHours: 0, focusHours: 0 };
+          return { k, m: td.meetingHours, f: td.focusHours };
+        });
+        const max = Math.max(2, ...days.map(x => Math.max(x.m, x.f)));
+        const spark = days.map(x => `
+          <div class="day" title="${x.k}: ${x.f}h focus / ${x.m}h meetings">
+            <div class="b mtg" style="height:${(x.m / max * 100).toFixed(0)}%"></div>
+            <div class="b foc" style="height:${(x.f / max * 100).toFixed(0)}%"></div>
+          </div>`).join("");
+        const lbls = days.map(x => `<span>${x.k.slice(8)}</span>`).join("");
+
+        const counter = (field, label) => `
+          <div class="counter">
+            <div class="lbl">${label}</div>
+            <div class="val">${d[field]}<span style="font-size:14px;font-weight:500"> h</span></div>
+            <div class="ctrls">
+              <button class="btn btn--sm btn--icon" data-field="${field}" data-delta="-0.5" title="−0.5">−</button>
+              <button class="btn btn--sm btn--icon" data-field="${field}" data-delta="0.5" title="+0.5">+</button>
+            </div>
+          </div>`;
+        body.innerHTML = `
+          <div class="tally-grid">
+            ${counter("meetingHours", "Meeting hours")}
+            ${counter("focusHours", "Focus hours")}
+          </div>
+          <div class="tally-ratio">focus : meeting = <b>${ratio}</b></div>
+          <div class="spark7">${spark}</div>
+          <div class="spark7-lbls">${lbls}</div>
+          <div class="spark-legend"><span><i class="foc" style="background:hsl(var(--ok))"></i>focus</span><span><i class="mtg" style="background:hsl(var(--warn))"></i>meetings</span> · last 7 days</div>`;
+      }
+    });
+
+    // ---- Applet: Standup notes buffer (day-scoped) ----------------------
+    registerApplet({
+      id: "standup", title: "Standup notes", wide: true,
+      mount(card) {
+        const { body } = parts(card);
+        body.classList.add("standup");
+        body.innerHTML = `
+          <div class="standup-head">
+            <select class="select" data-day aria-label="Pick a day"></select>
+            <div class="spacer"></div>
+            <button class="btn btn--sm" data-act="copy">Copy as standup</button>
+          </div>
+          <textarea class="textarea" data-notes placeholder="Jot today’s notes… (persists per day)"></textarea>
+          <div class="foot muted" data-foot></div>`;
+
+        const notes = body.querySelector("[data-notes]");
+        const sel = body.querySelector("[data-day]");
+
+        // Save on input WITHOUT re-rendering (keeps caret + selection).
+        notes.addEventListener("input", () => {
+          mutate(s => { day("standup", ui.standupDay).text = notes.value; }, { render: false });
+        });
+        sel.addEventListener("change", () => { ui.standupDay = sel.value; this.render(card); });
+        body.querySelector("[data-act=copy]").addEventListener("click", () => openStandupCopy());
+      },
+      render(card) {
+        const { body } = parts(card);
+        const sel = body.querySelector("[data-day]");
+        const notes = body.querySelector("[data-notes]");
+        const foot = body.querySelector("[data-foot]");
+
+        // Days available: today + any prior day that has saved notes (within prune window).
+        const keys = new Set([todayKey(), ui.standupDay]);
+        Object.keys(state.daily || {}).forEach(k => {
+          if (state.daily[k].standup && state.daily[k].standup.text.trim()) keys.add(k);
+        });
+        const sorted = Array.from(keys).sort().reverse();
+        sel.innerHTML = sorted.map(k =>
+          `<option value="${k}" ${k === ui.standupDay ? "selected" : ""}>${k === todayKey() ? "Today · " + k : k}</option>`).join("");
+
+        // Only overwrite the textarea when the user isn't actively typing in it.
+        if (document.activeElement !== notes) notes.value = day("standup", ui.standupDay).text;
+        foot.textContent = ui.standupDay === todayKey()
+          ? "Auto-rolls to a fresh buffer at midnight; last 30 days kept."
+          : "Viewing " + ui.standupDay + " (past buffer).";
+      }
+    });
+    // Build a Yesterday / Today / Blockers block and let the user edit + copy it.
+    function openStandupCopy() {
+      const todayNotes = day("standup", todayKey()).text.trim();
+      // "Yesterday" = the most recent prior day that has notes.
+      const prior = Object.keys(state.daily || {})
+        .filter(k => k < todayKey() && state.daily[k].standup && state.daily[k].standup.text.trim())
+        .sort().pop();
+      const prevNotes = prior ? state.daily[prior].standup.text.trim() : "";
+      const blockers = state.blockers.slice().sort((a, b) => new Date(a.since) - new Date(b.since))
+        .map(b => `- ${b.item}${b.who ? " (waiting on " + b.who + ")" : ""} — ${ageInDays(b.since)}d`).join("\n");
+      const text =
+        "Yesterday:\n" + (prevNotes || "- ") + "\n\n" +
+        "Today:\n" + (todayNotes || "- ") + "\n\n" +
+        "Blockers:\n" + (blockers || "- none");
+
+      openDialog("Copy as standup", [
+        { key: "text", label: "Edit, then Copy (pulls in your blocked-on list)", type: "textarea", rows: 12, value: text }
+      ], "Copy").then(vals => {
+        if (!vals) return;
+        copyText(vals.text).then(ok => toast(ok ? "Standup copied to clipboard." : "Copy failed — select and copy manually.", ok ? "ok" : "danger"));
+      });
+    }
+
+    // ---- Applet: Waiting-on / blocked tracker ---------------------------
+    registerApplet({
+      id: "blockers", title: "Waiting on",
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", async e => {
+          if (!e.target.closest("[data-act=add]")) return;
+          const vals = await openDialog("Add blocker", [
+            { key: "item", label: "What are you waiting on?", value: "" },
+            { key: "who", label: "Who / where (optional)", value: "", placeholder: "e.g. Priya, Platform team" }
+          ], "Add");
+          if (!vals || !vals.item.trim()) return;
+          mutate(s => { s.blockers.push({ id: uid(), item: vals.item.trim(), who: vals.who.trim(), since: new Date().toISOString() }); }, { only: ["blockers"] });
+        });
+        body.addEventListener("click", e => {
+          const li = e.target.closest("li.item"); if (!li) return;
+          if (e.target.closest("[data-act=resolve]")) {
+            const b = state.blockers.find(x => x.id === li.dataset.id);
+            mutate(s => { s.blockers = s.blockers.filter(x => x.id !== li.dataset.id); }, { only: ["blockers"] });
+            if (b) toast(`Cleared: ${b.item}`, "ok");
+          }
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        sub.textContent = state.blockers.length ? `${state.blockers.length} open` : "";
+        if (!state.blockers.length) { body.innerHTML = `<p class="empty">Nothing blocked. Click “+ Add” when you’re waiting on someone.</p>`; return; }
+        const sorted = state.blockers.slice().sort((a, b) => new Date(a.since) - new Date(b.since)); // oldest first
+        body.innerHTML = `<ul class="list">` + sorted.map(b => {
+          const age = ageInDays(b.since);
+          const badge = age >= 5 ? "badge--danger" : age >= 2 ? "badge--warn" : "";
+          return `
+            <li class="item" data-id="${b.id}">
+              <div class="item-head">
+                <span class="title">${escapeHtml(b.item)}</span>
+                <div class="spacer"></div>
+                <span class="badge ${badge}">${age}d</span>
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="resolve" title="Resolve / remove">✓</button>
+              </div>
+              ${b.who ? `<div class="meta">waiting on ${escapeHtml(b.who)} · since ${escapeHtml(new Date(b.since).toLocaleDateString())}</div>`
+                      : `<div class="meta">since ${escapeHtml(new Date(b.since).toLocaleDateString())}</div>`}
+            </li>`;
+        }).join("") + `</ul>`;
+      }
+    });
+
+    // ---- Applet: Snippet / command stash --------------------------------
+    registerApplet({
+      id: "snippets", title: "Snippets", wide: false,
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => { if (e.target.closest("[data-act=add]")) editSnippet(null); });
+        body.innerHTML = `
+          <div class="filter-row"><input class="input" data-filter placeholder="Filter by label or tag…" aria-label="Filter snippets" /></div>
+          <div data-list></div>`;
+        body.querySelector("[data-filter]").addEventListener("input", () => this.render(card));
+        body.querySelector("[data-list]").addEventListener("click", e => {
+          const li = e.target.closest("li.item"); if (!li) return;
+          const s = state.snippets.find(x => x.id === li.dataset.id); if (!s) return;
+          if (e.target.closest("[data-act=copy]"))
+            copyText(s.snippet).then(ok => toast(ok ? "Copied snippet." : "Copy failed.", ok ? "ok" : "danger"));
+          else if (e.target.closest("[data-act=edit]")) editSnippet(s);
+          else if (e.target.closest("[data-act=del]") && confirm(`Delete snippet “${s.label}”?`))
+            mutate(st => { st.snippets = st.snippets.filter(x => x.id !== s.id); }, { only: ["snippets"] });
+        });
+      },
+      render(card) {
+        const { body } = parts(card);
+        const q = (body.querySelector("[data-filter]").value || "").toLowerCase();
+        const list = body.querySelector("[data-list]");
+        const items = state.snippets.filter(s =>
+          !q || (s.label + " " + s.tag).toLowerCase().includes(q));
+        if (!state.snippets.length) { list.innerHTML = `<p class="empty">No snippets yet. Click “+ Add”.</p>`; return; }
+        if (!items.length) { list.innerHTML = `<p class="empty">No matches for “${escapeHtml(q)}”.</p>`; return; }
+        list.innerHTML = `<ul class="list">` + items.map(s => `
+          <li class="item snippet" data-id="${s.id}">
+            <div class="item-head">
+              <span class="title">${escapeHtml(s.label || "Untitled")}</span>
+              ${s.tag ? `<span class="badge tag">${escapeHtml(s.tag)}</span>` : ""}
+              <div class="spacer"></div>
+              <button class="btn btn--ghost btn--sm" data-act="copy" title="Copy">Copy</button>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="edit" title="Edit">✏️</button>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">🗑️</button>
+            </div>
+            <pre>${escapeHtml(s.snippet)}</pre>
+          </li>`).join("") + `</ul>`;
+      }
+    });
+    async function editSnippet(s) {
+      const isNew = !s; s = s || {};
+      const vals = await openDialog(isNew ? "Add snippet" : "Edit snippet", [
+        { key: "label", label: "Label", value: s.label || "", placeholder: "e.g. Squash last 3 commits" },
+        { key: "snippet", label: "Snippet / command", type: "textarea", rows: 5, value: s.snippet || "" },
+        { key: "tag", label: "Tag (optional)", value: s.tag || "", placeholder: "git, docker, k8s…" }
+      ], isNew ? "Add" : "Save");
+      if (!vals || (!vals.label.trim() && !vals.snippet.trim())) return;
+      mutate(st => {
+        if (isNew) st.snippets.push({ id: uid(), label: vals.label.trim(), snippet: vals.snippet, tag: vals.tag.trim() });
+        else {
+          const t = st.snippets.find(x => x.id === s.id);
+          if (t) { t.label = vals.label.trim(); t.snippet = vals.snippet; t.tag = vals.tag.trim(); }
+        }
+      }, { only: ["snippets"] });
+    }
+
+    // ---- Applet: Decision log (lightweight ADR) -------------------------
+    registerApplet({
+      id: "decisions", title: "Decision log", wide: false,
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => { if (e.target.closest("[data-act=add]")) addDecision(); });
+        body.innerHTML = `
+          <div class="filter-row"><input class="input" data-filter placeholder="Search decisions…" aria-label="Search decisions" /></div>
+          <div data-list></div>`;
+        body.querySelector("[data-filter]").addEventListener("input", () => this.render(card));
+        body.querySelector("[data-list]").addEventListener("click", e => {
+          const li = e.target.closest("li.item"); if (!li) return;
+          if (e.target.closest("[data-act=del]")) {
+            const d = state.decisions.find(x => x.id === li.dataset.id);
+            if (d && confirm("Delete this decision?"))
+              mutate(st => { st.decisions = st.decisions.filter(x => x.id !== d.id); }, { only: ["decisions"] });
+          }
+        });
+      },
+      render(card) {
+        const { body } = parts(card);
+        const q = (body.querySelector("[data-filter]").value || "").toLowerCase();
+        const list = body.querySelector("[data-list]");
+        // Newest first (by insertion order); filter across date + decision + why.
+        const items = state.decisions.slice().reverse().filter(d =>
+          !q || (d.date + " " + d.decision + " " + d.why).toLowerCase().includes(q));
+        if (!state.decisions.length) { list.innerHTML = `<p class="empty">No decisions yet. Capture one with “+ Add”.</p>`; return; }
+        if (!items.length) { list.innerHTML = `<p class="empty">No matches for “${escapeHtml(q)}”.</p>`; return; }
+        list.innerHTML = `<ul class="list">` + items.map(d => `
+          <li class="item" data-id="${d.id}">
+            <div class="item-head">
+              <span class="title">${escapeHtml(d.decision)}</span>
+              <div class="spacer"></div>
+              <span class="meta">${escapeHtml(d.date)}</span>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">🗑️</button>
+            </div>
+            ${d.why ? `<div class="body muted">${escapeHtml(d.why)}</div>` : ""}
+          </li>`).join("") + `</ul>`;
+      }
+    });
+    async function addDecision() {
+      const vals = await openDialog("Log a decision", [
+        { key: "decision", label: "Decision", type: "textarea", rows: 2, value: "" },
+        { key: "why", label: "Why", type: "textarea", rows: 3, value: "" },
+        { key: "date", label: "Date", type: "date", value: todayKey() }
+      ], "Add");
+      if (!vals || !vals.decision.trim()) return;
+      mutate(s => { s.decisions.push({ id: uid(), date: vals.date || todayKey(), decision: vals.decision.trim(), why: vals.why.trim() }); }, { only: ["decisions"] });
+    }
+
+    // ---- Applet: Bookmarks ----------------------------------------------
+    function linkFields(l) {
+      return [
+        { key: "label", label: "Label (clear it to delete the link)", value: l.label || "" },
+        { key: "url", label: "URL", value: l.url || "", placeholder: "https://…" },
+        { key: "icon", label: "Icon / emoji (optional)", value: l.icon || "", placeholder: "🐙" }
+      ];
+    }
+    function bookmarkTile(gid, l) {
+      const ph = isPlaceholder(l.url);
+      const glyph = l.icon ? escapeHtml(l.icon) : escapeHtml((l.label || "?").trim().charAt(0).toUpperCase());
+      const hrefText = ph ? "set a URL →" : l.url;
+      return `
+        <div class="bm-tile" data-lid="${l.id}" data-gid="${gid}">
+          <a class="row" style="gap:10px;flex:1;min-width:0" href="${escapeHtml(safeUrl(l.url))}" ${ph ? "" : `target="_blank" rel="noopener"`}>
+            <span class="glyph">${glyph}</span>
+            <span class="meta">
+              <span class="lbl">${escapeHtml(l.label || "Untitled")}</span>
+              <span class="href ${ph ? "placeholder-url" : ""}">${escapeHtml(hrefText)}</span>
+            </span>
+          </a>
+          <button class="btn btn--ghost btn--sm btn--icon edit" data-act="edit-link" title="Edit link">✏️</button>
+        </div>`;
+    }
+    registerApplet({
+      id: "bookmarks", title: "Bookmarks", wide: true,
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--sm" data-act="add-group">+ Group</button>`;
+        head.addEventListener("click", async e => {
+          if (!e.target.closest("[data-act=add-group]")) return;
+          const vals = await openDialog("Add group", [{ key: "label", label: "Group name", value: "", placeholder: "e.g. Work" }], "Add");
+          if (!vals || !vals.label.trim()) return;
+          mutate(s => { s.bookmarkGroups.push({ id: uid(), label: vals.label.trim(), links: [] }); }, { only: ["bookmarks"] });
+        });
+        body.addEventListener("click", async e => {
+          const groupEl = e.target.closest(".bm-group"); if (!groupEl) return;
+          const gid = groupEl.dataset.gid;
+          const group = state.bookmarkGroups.find(g => g.id === gid); if (!group) return;
+
+          if (e.target.closest("[data-act=add-link]")) {
+            const vals = await openDialog("Add link", linkFields({}), "Add");
+            if (!vals || !vals.label.trim()) return;
+            mutate(s => { s.bookmarkGroups.find(g => g.id === gid).links.push({ id: uid(), label: vals.label.trim(), url: vals.url.trim() || "#", icon: vals.icon.trim() }); }, { only: ["bookmarks"] });
+
+          } else if (e.target.closest("[data-act=edit-group]")) {
+            const vals = await openDialog("Rename group", [{ key: "label", label: "Group name", value: group.label }], "Save");
+            if (!vals || !vals.label.trim()) return;
+            mutate(s => { s.bookmarkGroups.find(g => g.id === gid).label = vals.label.trim(); }, { only: ["bookmarks"] });
+
+          } else if (e.target.closest("[data-act=del-group]")) {
+            if (confirm(`Delete group “${group.label}” and its ${group.links.length} link(s)?`))
+              mutate(s => { s.bookmarkGroups = s.bookmarkGroups.filter(g => g.id !== gid); }, { only: ["bookmarks"] });
+
+          } else if (e.target.closest("[data-act=edit-link]")) {
+            const tile = e.target.closest(".bm-tile"); const lid = tile.dataset.lid;
+            const link = group.links.find(l => l.id === lid); if (!link) return;
+            const vals = await openDialog("Edit link", linkFields(link), "Save");
+            if (vals === null) return;
+            if (!vals.label.trim()) { // empty label = delete
+              if (confirm(`Delete link “${link.label}”?`))
+                mutate(s => { const g = s.bookmarkGroups.find(x => x.id === gid); g.links = g.links.filter(l => l.id !== lid); }, { only: ["bookmarks"] });
+              return;
+            }
+            mutate(s => {
+              const l = s.bookmarkGroups.find(g => g.id === gid).links.find(x => x.id === lid);
+              if (l) { l.label = vals.label.trim(); l.url = vals.url.trim() || "#"; l.icon = vals.icon.trim(); }
+            }, { only: ["bookmarks"] });
+          }
+        });
+      },
+      render(card) {
+        const { body } = parts(card);
+        if (!state.bookmarkGroups.length) { body.innerHTML = `<p class="empty">No groups yet. Click “+ Group”.</p>`; return; }
+        body.innerHTML = state.bookmarkGroups.map(g => `
+          <div class="bm-group" data-gid="${g.id}">
+            <div class="bm-group-head">
+              <h3>${escapeHtml(g.label)}</h3>
+              <div class="spacer" style="flex:1"></div>
+              <button class="btn btn--ghost btn--sm" data-act="add-link">+ Link</button>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="edit-group" title="Rename group">✏️</button>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="del-group" title="Delete group">🗑️</button>
+            </div>
+            <div class="bm-tiles">${g.links.map(l => bookmarkTile(g.id, l)).join("") || `<p class="empty">No links yet.</p>`}</div>
+          </div>`).join("");
+      }
+    });
+
+    // ======================================================================
+    //  Export / Import
+    // ======================================================================
+    $("#btn-export").addEventListener("click", () => {
+      saveNow();
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = el("a");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      a.href = url; a.download = `tarmac-backup-${stamp}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("Backup downloaded.", "ok");
+    });
+
+    const KNOWN_KEYS = ["version", "theme", "applets", "bookmarkGroups", "todos", "quotas", "blockers", "decisions", "snippets", "deepwork", "daily"];
+    function looksLikeState(o) {
+      return o && typeof o === "object" && !Array.isArray(o) && KNOWN_KEYS.some(k => k in o);
+    }
+    $("#btn-import").addEventListener("click", () => $("#file-import").click());
+    $("#file-import").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          if (!looksLikeState(parsed)) throw new Error("Doesn’t look like a tarmac backup (no known fields).");
+          if (!confirm("Import will REPLACE your current dashboard state. Continue?")) return;
+          state = normalizeState(parsed);   // validates + fills gaps; never partially applied
+          pruneDaily();
+          ui.standupDay = todayKey();
+          saveNow(); applyTheme(); renderGrid();
+          toast("Import complete.", "ok");
+        } catch (err) {
+          toast("Import failed: " + err.message + " (your data is unchanged).", "danger", 6000);
+        } finally { e.target.value = ""; }
+      };
+      reader.onerror = () => toast("Import failed: couldn’t read the file.", "danger");
+      reader.readAsText(file);
+    });
+
+    // ======================================================================
+    //  Boot + timers
+    // ======================================================================
+    ui.timer.remaining = state.deepwork.focusMin * 60;
+    applyTheme();
+    renderGrid();
+
+    // One 1s loop drives per-second applets (clock, timer) and midnight rollover.
+    let activeDay = todayKey();
+    let secTick = 0;
+    setInterval(() => {
+      const k = todayKey();
+      if (k !== activeDay) {                     // crossed local midnight
+        activeDay = k; ui.standupDay = k;
+        pruneDaily(); saveNow(); renderApplets(); // day-scoped applets pick up the new key
+      }
+      mounted.forEach(m => m.def.tick && m.def.tick(m.card));
+      if (++secTick % 60 === 0) renderApplet("quota"); // keep cycle math fresh
+    }, 1000);
+
+    // Keyboard nicety: press "/" to jump to the add-task field.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !dlg.open) {
+        const inp = $("#todo-input"); if (inp) { e.preventDefault(); inp.focus(); }
+      }
+    });
+
+    // Expose for debugging / console tinkering.
+    window.tarmac = {
+      get state() { return state; },
+      save: saveNow,
+      export() { $("#btn-export").click(); },
+      reset() { if (confirm("Reset tarmac to defaults? This clears saved state.")) { localStorage.removeItem(STORAGE_KEY); location.reload(); } }
+    };
+  })();
+  </script>
+</body>
+</html>
