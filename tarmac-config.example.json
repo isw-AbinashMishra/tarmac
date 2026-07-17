@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "theme": "system",
+  "applets": {
+    "order": ["clock", "quota", "deepwork", "tally", "todo", "standup", "blockers", "snippets", "decisions", "bookmarks"],
+    "disabled": []
+  },
+  "bookmarkGroups": [
+    {
+      "label": "Work",
+      "links": [
+        { "label": "Jira",   "url": "https://your-org.atlassian.net", "icon": "🧭" },
+        { "label": "GitHub", "url": "https://github.com/your-org",    "icon": "🐙" },
+        { "label": "Google", "url": "https://www.google.com",         "icon": "🔍" },
+        { "label": "Claude", "url": "https://claude.ai",              "icon": "✳️" }
+      ]
+    },
+    {
+      "label": "Ops",
+      "links": [
+        { "label": "CI",       "url": "https://ci.example.com",    "icon": "⚙️" },
+        { "label": "Dashboards","url": "https://grafana.example.com","icon": "📈" }
+      ]
+    }
+  ],
+  "todos": [
+    { "text": "Fill in real bookmark URLs", "done": false, "due": "" },
+    { "text": "Set my first quota's monthly limit", "done": false, "due": "" }
+  ],
+  "quotas": [
+    { "label": "GitHub credits", "unit": "credits", "monthlyLimit": 1000, "used": 240, "resetDay": 1,  "source": "manual" },
+    { "label": "OpenAI",         "unit": "$",       "monthlyLimit": 120,  "used": 35,  "resetDay": 15, "source": "manual" }
+  ],
+  "blockers": [
+    { "item": "Design sign-off on the new grid", "who": "Priya", "since": "2026-07-14T09:00:00.000Z" }
+  ],
+  "snippets": [
+    { "label": "Squash last 3 commits", "snippet": "git rebase -i HEAD~3", "tag": "git" },
+    { "label": "Reset the dashboard (console)", "snippet": "tarmac.reset()", "tag": "tarmac" }
+  ],
+  "decisions": [
+    { "date": "2026-07-15", "decision": "Keep tarmac a single static file", "why": "No build step; works from file:// as a Chrome homepage." }
+  ],
+  "deepwork": { "focusMin": 50, "breakMin": 10 },
+  "daily": {}
+}
