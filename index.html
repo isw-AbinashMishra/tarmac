@@ -564,6 +564,41 @@
   (function () {
 
     // ======================================================================
+    //  FILE MAP  (for surgical edits — this file is intentionally ONE file)
+    // ----------------------------------------------------------------------
+    //  Layout of index.html:
+    //    <head><style>  design tokens + component CSS   → grep a class (".timer",
+    //                   ".bm-tile", ".quota", ".spark7", ".toast")
+    //    <body>         header toolbar, <main id="grid">, README <details>,
+    //                   <dialog id="dlg">, <div id="toasts">
+    //    <script>       everything below, in this order:
+    //
+    //  JS sections (grep the quoted anchor to jump straight there):
+    //    CONFIG                 first-run seed + applet order   → grep  const CONFIG
+    //    Small utilities        $ el uid debounce escapeHtml safeUrl copyText toast
+    //    Date helpers           dateKey todayKey billingCycle monthProgress lastNDays
+    //    Day-scoped state       DAILY_DEFAULTS · day() · pruneDaily
+    //    State                  normalizeState seedFromConfig loadState saveNow mutate
+    //    Theme                  applyTheme
+    //    Dialog helper          openDialog (fields -> values; supports type:"textarea")
+    //    Applet framework       registerApplet buildCard parts renderGrid renderApplet(s)
+    //    APPLET DEFINITIONS     one registerApplet(...) per card (see below)
+    //    Export / Import        grep  btn-export  /  file-import
+    //    Boot + timers          grep  Boot + timers
+    //
+    //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
+    //    ids: clock quota todo deepwork tally standup blockers snippets decisions bookmarks
+    //  Applet-specific helpers (grep the function name):
+    //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag
+    //    deepwork:  timerStart/Pause/Reset/Complete
+    //    standup:   openStandupCopy               snippets:  editSnippet
+    //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
+    //
+    //  See CLAUDE.md for the applet contract, invariants, and how to add one.
+    //  (Line numbers drift with edits — anchor on the strings above, not on lines.)
+    // ======================================================================
+
+    // ======================================================================
     //  CONFIG  — defaults used ONLY to seed a fresh install (empty storage).
     //  After first run, your state is in localStorage: edit in-app, or Import
     //  a JSON. Everything here is also overridable by an imported JSON file.

@@ -142,13 +142,17 @@ Your real bookmark URLs and first quota, by line number:
 
 | Line | Change                                                                     |
 | ---- | ------------------------------------------------------------------------- |
-| 591  | `{ label: "Jira",   url: "#REPLACE-ME", ... }` → your Jira URL            |
-| 592  | `{ label: "GitHub", url: "#REPLACE-ME", ... }` → your GitHub URL          |
-| 593  | Google (already `https://www.google.com`) — change if you like            |
-| 594  | Claude (already `https://claude.ai`) — change if you like                 |
-| 607  | `label: "GitHub credits"` — rename your first quota                       |
-| 609  | `monthlyLimit: 1000` — your allowance                                     |
-| 611  | `resetDay: 1` — the day-of-month it resets (1–28)                         |
+| 626  | `{ label: "Jira",   url: "#REPLACE-ME", ... }` → your Jira URL            |
+| 627  | `{ label: "GitHub", url: "#REPLACE-ME", ... }` → your GitHub URL          |
+| 628  | Google (already `https://www.google.com`) — change if you like            |
+| 629  | Claude (already `https://claude.ai`) — change if you like                 |
+| 642  | `label: "GitHub credits"` — rename your first quota                       |
+| 644  | `monthlyLimit: 1000` — your allowance                                     |
+| 646  | `resetDay: 1` — the day-of-month it resets (1–28)                         |
+
+> Line numbers drift as the file changes. If they're off, just search `index.html`
+> for `#REPLACE-ME` (the two bookmarks to fill in) and `GitHub credits` (your first
+> quota). See `CLAUDE.md` for the full grep-anchor map.
 
 > ⚠️ Editing `CONFIG` only affects a **fresh install**. If you've already opened the app
 > (state is saved), either run `tarmac.reset()` in the console first, or just edit those
