@@ -320,7 +320,7 @@
     .bm-tile .meta { min-width: 0; }
     .bm-tile .meta .lbl { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .bm-tile .meta .href { font-size: 11px; color: hsl(var(--muted-foreground));
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;  }
     .bm-tile .edit {
       position: absolute; top: 4px; right: 4px; opacity: 0;
       transition: opacity .12s;
@@ -415,8 +415,11 @@
       color: hsl(var(--muted-foreground)); }
     .timer .count { font-size: 52px; font-weight: 700; letter-spacing: -0.02em;
       font-variant-numeric: tabular-nums; line-height: 1.1; margin: 2px 0 10px; }
-    .timer .count.break { color: hsl(var(--ok)); }
+    .timer .count.break, .timer .count.done { color: hsl(var(--ok)); }
     .timer-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .wd-set { display: flex; gap: 8px; align-items: flex-end; justify-content: center;
+      flex-wrap: wrap; margin-top: 12px; }
+    .wd-set .field { margin: 0; }
     .dw-stats { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
     .dw-stat { text-align: center; padding: 8px 14px; border: 1px solid hsl(var(--border));
       border-radius: calc(var(--radius) - 2px); background: hsl(var(--background)); min-width: 92px; }
@@ -643,10 +646,10 @@
     //    Boot + timers          grep  Boot + timers
     //
     //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
-    //    ids: clock quota todo deepwork tally capacity standup blockers snippets decisions bookmarks
+    //    ids: clock quota todo deepwork tally capacity workday standup blockers snippets decisions bookmarks
     //  Applet-specific helpers (grep the function name):
     //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag
-    //    deepwork:  timerStart/Pause/Reset/Complete
+    //    deepwork:  timerStart/Pause/Reset/Complete       workday: formatHMS
     //    standup:   openStandupCopy               snippets:  editSnippet
     //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
     //
@@ -668,7 +671,7 @@
       // Which applets are shown, and in what order (top-to-bottom).
       applets: {
         order: [
-          "clock", "quota", "deepwork", "tally", "capacity", "todo",
+          "clock", "workday", "quota", "deepwork", "tally", "capacity", "todo",
           "standup", "blockers", "bookmarks", "snippets", "decisions"
         ],
         disabled: []   // e.g. ["decisions"] to hide the decision log
@@ -733,7 +736,7 @@
     };
 
     const STORAGE_KEY = "tarmac:state";
-    const STATE_VERSION = 4;
+    const STATE_VERSION = 5;
     const DAILY_KEEP_DAYS = 30;
 
     // ======================================================================
@@ -851,6 +854,11 @@
       const m = Math.floor(sec / 60), s = sec % 60;
       return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
     }
+    function formatHMS(sec) {
+      sec = Math.max(0, Math.round(sec));
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
     const fmt = (n) => (Number(n) || 0).toLocaleString();
     // Last n local date keys, oldest first, ending today (DST-safe via setDate).
     function lastNDays(n) {
@@ -869,7 +877,8 @@
     const DAILY_DEFAULTS = {
       standup:  () => ({ text: "" }),
       deepwork: () => ({ blocks: 0, interruptions: 0 }),
-      tally:    () => ({ meetingHours: 0, focusHours: 0 })
+      tally:    () => ({ meetingHours: 0, focusHours: 0 }),
+      workday:  () => ({ startedAt: "" })
     };
     function day(appletId, key = todayKey()) {
       if (!state.daily) state.daily = {};
@@ -992,7 +1001,8 @@
             tally: {
               meetingHours: Number(src.tally && src.tally.meetingHours) || 0,
               focusHours: Number(src.tally && src.tally.focusHours) || 0
-            }
+            },
+            workday: { startedAt: String((src.workday && src.workday.startedAt) || "") }
           };
         });
       }
@@ -1628,7 +1638,7 @@
 
     // ---- Applet: Standup notes buffer (day-scoped) ----------------------
     registerApplet({
-      id: "standup", title: "Standup notes", wide: true,
+      id: "standup", title: "Standup notes", superwide: true,
       mount(card) {
         const { body } = parts(card);
         body.classList.add("standup");
@@ -1745,7 +1755,7 @@
 
     // ---- Applet: Snippet / command stash --------------------------------
     registerApplet({
-      id: "snippets", title: "Snippets", wide: false,
+      id: "snippets", title: "Snippets", wide: true,
       mount(card) {
         const { head, body } = parts(card);
         head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
@@ -2088,6 +2098,88 @@
           </div>
           <div class="cap-foot cap-foot--${tone}">${escapeHtml(status)}</div>`;
       }
+    });
+
+    // ---- Applet: Workday countdown ---------------------------------------
+    // Start time is day-scoped (state.daily[today].workday); day length reads
+    // from the Capacity applet's "hours" setting, so there's one place to tune it.
+    registerApplet({
+      id: "workday", title: "Time left today",
+      mount(card) {
+        const { body } = parts(card);
+        body.innerHTML = `
+          <div class="timer">
+            <div class="phase" data-wd-phase></div>
+            <div class="count" data-wd-count>--:--:--</div>
+            <div class="bar"><div class="bar__fill" data-wd-fill style="width:0%"></div></div>
+            <div class="timer-controls">
+              <button class="btn btn--primary" data-act="start">Start day</button>
+              <button class="btn btn--ghost" data-act="reset">Reset</button>
+            </div>
+          </div>
+          <form class="wd-set" data-form>
+            <label class="field">
+              <span>Or set start time</span>
+              <input class="input" type="time" data-wd-time style="width:110px" aria-label="Start time" />
+            </label>
+            <button class="btn btn--sm" type="submit">Set</button>
+          </form>`;
+        body.addEventListener("click", e => {
+          if (e.target.closest("[data-act=start]"))
+            mutate(s => { day("workday").startedAt = new Date().toISOString(); }, { only: ["workday"] });
+          else if (e.target.closest("[data-act=reset]"))
+            mutate(s => { day("workday").startedAt = ""; }, { only: ["workday"] });
+        });
+        body.querySelector("[data-form]").addEventListener("submit", e => {
+          e.preventDefault();
+          const input = body.querySelector("[data-wd-time]");
+          const m = /^(\d{1,2}):(\d{2})$/.exec(input.value); if (!m) return;
+          const at = new Date(); at.setHours(Number(m[1]), Number(m[2]), 0, 0);
+          mutate(s => { day("workday").startedAt = at.toISOString(); }, { only: ["workday"] });
+          input.value = "";
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const d = day("workday");
+        const hours = state.capacity.hours || 8;
+        const start = d.startedAt ? new Date(d.startedAt) : null;
+        const started = !!(start && !isNaN(start));
+        const phaseEl = body.querySelector("[data-wd-phase]");
+        const countEl = body.querySelector("[data-wd-count]");
+        const fillEl = body.querySelector("[data-wd-fill]");
+        body.querySelector("[data-act=start]").textContent = started ? "Restart" : "Start day";
+        body.querySelector("[data-act=reset]").disabled = !started;
+
+        if (!started) {
+          sub.textContent = `${round1(hours)}h day`;
+          phaseEl.textContent = "Not started";
+          countEl.textContent = "--:--:--";
+          countEl.classList.remove("done");
+          fillEl.style.width = "0%";
+          fillEl.classList.remove("warn", "danger");
+          return;
+        }
+        const totalMs = hours * 3600000;
+        const end = new Date(start.getTime() + totalMs);
+        const remaining = end.getTime() - Date.now();
+        const pct = Math.min(100, Math.max(0, (Date.now() - start.getTime()) / totalMs * 100));
+        const timeLbl = t => t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        sub.textContent = `Started ${timeLbl(start)} · ends ~${timeLbl(end)}`;
+        fillEl.style.width = pct.toFixed(1) + "%";
+        fillEl.classList.toggle("warn", remaining > 0 && remaining <= totalMs * 0.15);
+        fillEl.classList.toggle("danger", remaining <= 0);
+        if (remaining > 0) {
+          phaseEl.textContent = "Left today";
+          countEl.textContent = formatHMS(remaining / 1000);
+          countEl.classList.remove("done");
+        } else {
+          phaseEl.textContent = "Day complete";
+          countEl.textContent = formatHMS(-remaining / 1000) + " over";
+          countEl.classList.add("done");
+        }
+      },
+      tick(card) { this.render(card); }
     });
 
     // ======================================================================

@@ -38,8 +38,8 @@ directly via `file://` as a Chrome homepage / pinned tab. `README.md` is user do
 Start from the `FILE MAP` comment at the top of the `<script>`, then jump with anchors:
 
 - **Edit an applet** → grep its id, e.g. `id: "deepwork"` (jumps to its
-  `registerApplet({...})`). Ids: `clock quota todo deepwork tally standup blockers
-  snippets decisions bookmarks`.
+  `registerApplet({...})`). Ids: `clock quota todo deepwork tally capacity workday
+  standup blockers snippets decisions bookmarks`.
 - **A CSS rule** → grep the class (e.g. `.timer`, `.bm-tile`, `.quota`, `.spark7`).
 - **Applet helpers** by name: `computeQuota`, `editQuota`, `moveTodo`, `wireTodoDrag`,
   `timerStart`, `openStandupCopy`, `editSnippet`, `addDecision`, `bookmarkTile`,

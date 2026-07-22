@@ -1,8 +1,8 @@
 {
-  "version": 4,
+  "version": 5,
   "theme": "system",
   "applets": {
-    "order": ["clock", "quota", "deepwork", "tally", "capacity", "todo", "standup", "blockers", "bookmarks", "snippets", "decisions"],
+    "order": ["clock", "workday", "quota", "deepwork", "tally", "capacity", "todo", "standup", "blockers", "bookmarks", "snippets", "decisions"],
     "disabled": []
   },
   "bookmarkGroups": [
