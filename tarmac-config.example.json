@@ -1,8 +1,8 @@
 {
-  "version": 2,
+  "version": 4,
   "theme": "system",
   "applets": {
-    "order": ["clock", "quota", "deepwork", "tally", "todo", "standup", "blockers", "snippets", "decisions", "bookmarks"],
+    "order": ["clock", "quota", "deepwork", "tally", "capacity", "todo", "standup", "blockers", "bookmarks", "snippets", "decisions"],
     "disabled": []
   },
   "bookmarkGroups": [
@@ -31,6 +31,15 @@
     { "label": "GitHub credits", "unit": "credits", "monthlyLimit": 1000, "used": 240, "resetDay": 1,  "source": "manual" },
     { "label": "OpenAI",         "unit": "$",       "monthlyLimit": 120,  "used": 35,  "resetDay": 15, "source": "manual" }
   ],
+  "capacity": {
+    "hours": 9,
+    "daysPerWeek": 5,
+    "items": [
+      { "label": "REM – Dev",       "pct": 70 },
+      { "label": "LC – Dev",        "pct": 20 },
+      { "label": "Mid-year review", "pct": 10 }
+    ]
+  },
   "blockers": [
     { "item": "Design sign-off on the new grid", "who": "Priya", "since": "2026-07-14T09:00:00.000Z" }
   ],

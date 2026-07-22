@@ -46,6 +46,9 @@
        { id, label, unit, monthlyLimit, used, resetDay, source:"manual" }
      ],
 
+     // ── Applet: capacity (how you split a working day, by %) ─────────────
+     capacity: { hours: 9, items: [ { id, label, pct } ] },
+
      // ── Applet: blockers (waiting-on) ───────────────────────────────────
      blockers: [ { id, item, who, since } ],   // since = ISO timestamp on add
 
@@ -77,7 +80,7 @@
      registerApplet({
        id:    "myapplet",       // unique; also the key used in applets.order
        title: "My Applet",      // shown in the card header
-       wide:  false,            // true => spans two grid columns
+       wide:  false,            // true => spans two grid columns; superwide => three
        mount(card) { ... },     // build the card body ONCE + wire events
        render(card) { ... },    // refresh the dynamic region from `state`
        tick(card)  { ... }      // OPTIONAL: called ~1×/sec (clock, timer)
@@ -107,53 +110,53 @@
 
   <style>
     /* ========================================================================
-       Design tokens — shadcn-inspired "zinc" palette expressed as HSL triples.
+       Design tokens — Material-inspired palette expressed as HSL triples.
+       One purple primary (M3 baseline #6750A4), tonal surfaces, soft elevation.
        Light is the default in :root; .dark (toggled on <html>) overrides.
+       To re-theme the whole app, edit the --primary / --accent / --ring lines.
        ===================================================================== */
     :root {
-      --background: 0 0% 100%;
-      --foreground: 240 10% 3.9%;
+      --background: 265 20% 96.5%;
+      --foreground: 270 8% 12%;
       --card: 0 0% 100%;
-      --card-foreground: 240 10% 3.9%;
-      --muted: 240 4.8% 95.9%;
-      --muted-foreground: 240 3.8% 46.1%;
-      --border: 240 5.9% 90%;
-      --input: 240 5.9% 90%;
-      --primary: 240 5.9% 10%;
-      --primary-foreground: 0 0% 98%;
-      --accent: 240 4.8% 95.9%;
-      --accent-foreground: 240 5.9% 10%;
-      --ring: 240 5% 65%;
+      --card-foreground: 270 8% 12%;
+      --muted: 268 30% 96%;
+      --muted-foreground: 268 6% 42%;
+      --border: 268 18% 89%;
+      --input: 268 18% 84%;
+      --primary: 256 34% 48%;
+      --primary-foreground: 0 0% 100%;
+      --accent: 256 48% 94%;
+      --accent-foreground: 256 40% 30%;
+      --ring: 256 34% 48%;
 
-      --ok: 142 71% 40%;
-      --warn: 38 92% 45%;
-      --danger: 0 72% 48%;
+      --ok: 142 55% 38%;
+      --warn: 32 95% 44%;
+      --danger: 2 68% 48%;
 
-      --radius: 0.65rem;
-      --shadow: 0 1px 2px 0 hsl(240 10% 3.9% / 0.06),
-                0 1px 3px 0 hsl(240 10% 3.9% / 0.10);
+      --radius: 0.75rem;
+      --shadow: 0 1px 3px hsl(256 18% 22% / 0.07);
     }
     html.dark {
-      --background: 240 10% 3.9%;
-      --foreground: 0 0% 98%;
-      --card: 240 8% 7%;
-      --card-foreground: 0 0% 98%;
-      --muted: 240 4% 16%;
-      --muted-foreground: 240 5% 65%;
-      --border: 240 4% 18%;
-      --input: 240 4% 18%;
-      --primary: 0 0% 98%;
-      --primary-foreground: 240 5.9% 10%;
-      --accent: 240 4% 16%;
-      --accent-foreground: 0 0% 98%;
-      --ring: 240 5% 45%;
+      --background: 264 12% 8%;
+      --foreground: 270 12% 92%;
+      --card: 264 10% 12%;
+      --card-foreground: 270 12% 92%;
+      --muted: 264 8% 20%;
+      --muted-foreground: 268 8% 66%;
+      --border: 264 8% 24%;
+      --input: 264 8% 30%;
+      --primary: 256 95% 84%;
+      --primary-foreground: 258 42% 18%;
+      --accent: 258 28% 26%;
+      --accent-foreground: 256 90% 90%;
+      --ring: 256 90% 80%;
 
-      --ok: 142 65% 45%;
-      --warn: 38 92% 55%;
-      --danger: 0 72% 58%;
+      --ok: 142 45% 58%;
+      --warn: 36 90% 62%;
+      --danger: 4 75% 70%;
 
-      --shadow: 0 1px 2px 0 hsl(0 0% 0% / 0.4),
-                0 2px 6px 0 hsl(0 0% 0% / 0.35);
+      --shadow: 0 1px 2px hsl(0 0% 0% / 0.4);
     }
 
     * { box-sizing: border-box; }
@@ -169,7 +172,6 @@
     :focus-visible {
       outline: 2px solid hsl(var(--ring));
       outline-offset: 2px;
-      border-radius: calc(var(--radius) - 2px);
     }
     a { color: inherit; text-decoration: none; }
     h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
@@ -183,7 +185,7 @@
     }
     .brand { display: flex; align-items: baseline; gap: 10px; }
     .brand h1 { font-size: 22px; }
-    .brand .dot { color: hsl(var(--muted-foreground)); }
+    .brand .dot { color: hsl(var(--primary)); }
     .brand .tag { color: hsl(var(--muted-foreground)); font-size: 12px; }
     .spacer { flex: 1 1 auto; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -191,11 +193,21 @@
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 16px;
-      align-items: start;
+      gap: 14px;
+      align-items: stretch;
     }
     .card--wide { grid-column: span 2; }
-    @media (max-width: 720px) { .card--wide { grid-column: span 1; } }
+    .card--superwide { grid-column: span 3; }
+    @media (max-width: 1060px) { .card--superwide { grid-column: span 2; } }
+    @media (max-width: 720px)  { .card--wide, .card--superwide { grid-column: span 1; } }
+
+    /* Arrange mode: drag cards to reorder (toggled by #btn-arrange). */
+    .grid--arranging .card { cursor: move; user-select: none; outline: 1px dashed hsl(var(--border)); }
+    .grid--arranging .card:hover { border-color: hsl(var(--ring)); }
+    .grid--arranging .card:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+    .card.dragging { opacity: .4; }
+    .card.drop-before { box-shadow: -3px 0 0 0 hsl(var(--ring)), var(--shadow); }
+    .card.drop-after  { box-shadow:  3px 0 0 0 hsl(var(--ring)), var(--shadow); }
 
     /* --- card -------------------------------------------------------------- */
     .card {
@@ -220,14 +232,14 @@
     /* --- buttons / inputs (shadcn-ish) ------------------------------------- */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      height: 34px; padding: 0 12px;
+      height: 34px; padding: 0 16px;
       font-size: 13px; font-weight: 500; white-space: nowrap;
       border: 1px solid hsl(var(--border));
-      border-radius: calc(var(--radius) - 2px);
+      border-radius: 999px;                 /* Material stadium/pill shape */
       background: hsl(var(--card));
       color: hsl(var(--card-foreground));
       cursor: pointer; user-select: none;
-      transition: background .12s ease, border-color .12s ease, opacity .12s;
+      transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, opacity .12s;
     }
     .btn:hover { background: hsl(var(--accent)); }
     .btn:active { transform: translateY(0.5px); }
@@ -236,7 +248,8 @@
       background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
       border-color: hsl(var(--primary));
     }
-    .btn--primary:hover { opacity: .9; background: hsl(var(--primary)); }
+    .btn--primary:hover { background: hsl(var(--primary)); opacity: .92;
+      box-shadow: 0 1px 2px hsl(256 40% 20% / .3), 0 2px 6px hsl(256 40% 20% / .22); }
     .btn--ghost { border-color: transparent; background: transparent; }
     .btn--ghost:hover { background: hsl(var(--accent)); }
     .btn--icon { width: 34px; padding: 0; }
@@ -286,7 +299,9 @@
     .bm-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .bm-group-head h3 { font-size: 12px; text-transform: uppercase;
       letter-spacing: .06em; color: hsl(var(--muted-foreground)); }
-    .bm-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .bm-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    @media (max-width: 1060px) { .bm-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 720px)  { .bm-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .bm-tile {
       position: relative;
       display: flex; align-items: center; gap: 10px;
@@ -427,10 +442,46 @@
       color: hsl(var(--muted-foreground)); margin-top: 8px; }
     .spark-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
 
+    /* --- capacity ---------------------------------------------------------- */
+    .cap { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    .cap-pie {                       /* conic-gradient is set inline from state */
+      position: relative; flex: 0 0 auto;
+      width: 128px; height: 128px; border-radius: 50%;
+      background: hsl(var(--muted));
+    }
+    .cap-hole {
+      position: absolute; inset: 27%; border-radius: 50%;
+      background: hsl(var(--card));
+      display: grid; place-content: center; text-align: center; line-height: 1.05;
+    }
+    .cap-hole b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cap-hole span { font-size: 10px; color: hsl(var(--muted-foreground)); }
+    .cap-legend { list-style: none; margin: 0; padding: 0;
+      flex: 1 1 210px; min-width: 210px; display: flex; flex-direction: column; gap: 2px; }
+    .cap-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+    .cap-sw { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 3px; }
+    .cap-lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cap-pct { font-variant-numeric: tabular-nums; font-weight: 600; width: 44px; text-align: right; }
+    .cap-hrs { font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground));
+      width: 58px; text-align: right; }
+    .cap-wk  { font-variant-numeric: tabular-nums; color: hsl(var(--foreground)); font-weight: 600;
+      width: 64px; text-align: right; }                        /* projected time per week */
+    .cap-head { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+      color: hsl(var(--muted-foreground)); padding-bottom: 2px; }
+    .cap-head .cap-pct, .cap-head .cap-hrs, .cap-head .cap-wk { font-weight: 600; }
+    .cap-row--free .cap-lbl, .cap-row--free .cap-pct { color: hsl(var(--muted-foreground)); font-weight: 400; }
+    .cap-acts { flex: 0 0 auto; min-width: 58px; display: flex; gap: 2px;
+      justify-content: flex-end; opacity: 0; transition: opacity .12s; }
+    .cap-row:hover .cap-acts, .cap-row:focus-within .cap-acts { opacity: 1; }
+    .cap-foot { margin-top: 12px; font-size: 12px; font-weight: 500; }
+    .cap-foot--ok { color: hsl(var(--ok)); }
+    .cap-foot--warn { color: hsl(var(--muted-foreground)); }
+    .cap-foot--danger { color: hsl(var(--danger)); }
+
     /* --- dialog ------------------------------------------------------------ */
     dialog {
-      border: 1px solid hsl(var(--border));
-      border-radius: var(--radius);
+      border: none;
+      border-radius: 1.25rem;
       background: hsl(var(--card));
       color: hsl(var(--card-foreground));
       padding: 0; width: min(460px, calc(100vw - 32px));
@@ -480,6 +531,7 @@
       <div class="spacer"></div>
       <div class="toolbar">
         <button class="btn btn--icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme">🌓</button>
+        <button class="btn" id="btn-arrange" title="Drag cards to reorder" aria-pressed="false">Arrange</button>
         <button class="btn" id="btn-export" title="Download a JSON backup">Export</button>
         <button class="btn" id="btn-import" title="Restore from a JSON backup">Import</button>
         <input type="file" id="file-import" accept="application/json,.json" class="sr-only" aria-hidden="true" />
@@ -509,11 +561,14 @@
           leaves your data untouched. Export before switching machines or clearing browser data.</p>
 
           <h4>Enable / disable / reorder applets</h4>
-          <p>Applets are config-driven. Edit <code>state.applets.order</code> (the list of applet ids,
+          <p><b>Reorder in-app:</b> click <b>Arrange</b> in the toolbar, then drag cards into the order
+          you want (or focus a card and use the arrow keys). Click <b>Done</b> when finished — the order
+          is saved automatically.</p>
+          <p>Applets are also config-driven. Edit <code>state.applets.order</code> (the list of applet ids,
           top-to-bottom) and <code>state.applets.disabled</code> (ids to hide). Do it by editing
           <code>CONFIG.applets</code> in the source for a fresh install, or Export → edit the JSON →
-          Import. Applet ids: <code>clock, quota, deepwork, tally, todo, standup, blockers, snippets,
-          decisions, bookmarks</code>.</p>
+          Import. Applet ids: <code>clock, quota, deepwork, tally, capacity, todo, standup, blockers,
+          snippets, decisions, bookmarks</code>.</p>
 
           <h4>Add a bookmark group</h4>
           <ul>
@@ -564,6 +619,42 @@
   (function () {
 
     // ======================================================================
+    //  FILE MAP  (for surgical edits — this file is intentionally ONE file)
+    // ----------------------------------------------------------------------
+    //  Layout of index.html:
+    //    <head><style>  design tokens + component CSS   → grep a class (".timer",
+    //                   ".bm-tile", ".quota", ".spark7", ".toast")
+    //    <body>         header toolbar, <main id="grid">, README <details>,
+    //                   <dialog id="dlg">, <div id="toasts">
+    //    <script>       everything below, in this order:
+    //
+    //  JS sections (grep the quoted anchor to jump straight there):
+    //    CONFIG                 first-run seed + applet order   → grep  const CONFIG
+    //    Small utilities        $ el uid debounce escapeHtml safeUrl copyText toast
+    //    Date helpers           dateKey todayKey billingCycle monthProgress lastNDays
+    //    Day-scoped state       DAILY_DEFAULTS · day() · pruneDaily
+    //    State                  normalizeState seedFromConfig loadState saveNow mutate
+    //    Theme                  applyTheme
+    //    Dialog helper          openDialog (fields -> values; supports type:"textarea")
+    //    Applet framework       registerApplet buildCard parts renderGrid renderApplet(s)
+    //    Arrange mode           setArrangeMode moveCard nudgeCard wireCardDrag (grep  btn-arrange)
+    //    APPLET DEFINITIONS     one registerApplet(...) per card (see below)
+    //    Export / Import        grep  btn-export  /  file-import
+    //    Boot + timers          grep  Boot + timers
+    //
+    //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
+    //    ids: clock quota todo deepwork tally capacity standup blockers snippets decisions bookmarks
+    //  Applet-specific helpers (grep the function name):
+    //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag
+    //    deepwork:  timerStart/Pause/Reset/Complete
+    //    standup:   openStandupCopy               snippets:  editSnippet
+    //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
+    //
+    //  See CLAUDE.md for the applet contract, invariants, and how to add one.
+    //  (Line numbers drift with edits — anchor on the strings above, not on lines.)
+    // ======================================================================
+
+    // ======================================================================
     //  CONFIG  — defaults used ONLY to seed a fresh install (empty storage).
     //  After first run, your state is in localStorage: edit in-app, or Import
     //  a JSON. Everything here is also overridable by an imported JSON file.
@@ -577,8 +668,8 @@
       // Which applets are shown, and in what order (top-to-bottom).
       applets: {
         order: [
-          "clock", "quota", "deepwork", "tally", "todo",
-          "standup", "blockers", "snippets", "decisions", "bookmarks"
+          "clock", "quota", "deepwork", "tally", "capacity", "todo",
+          "standup", "blockers", "bookmarks", "snippets", "decisions"
         ],
         disabled: []   // e.g. ["decisions"] to hide the decision log
       },
@@ -626,12 +717,23 @@
         { decision: "Keep tarmac a single static file", why: "No build step; works from file:// as a Chrome homepage." }
       ],
 
+      // ── Applet: capacity (split your working day across areas, by %) ────
+      capacity: {
+        hours: 9,               // length of a working day, in hours
+        daysPerWeek: 5,         // working days per week (for the weekly projection)
+        items: [
+          { label: "REM – Dev",        pct: 70 },
+          { label: "LC – Dev",         pct: 20 },
+          { label: "Mid-year review",  pct: 10 }
+        ]
+      },
+
       // ── Applet: deepwork (pomodoro lengths; daily counts are day-scoped) ─
       deepwork: { focusMin: 50, breakMin: 10 }
     };
 
     const STORAGE_KEY = "tarmac:state";
-    const STATE_VERSION = 2;
+    const STATE_VERSION = 4;
     const DAILY_KEEP_DAYS = 30;
 
     // ======================================================================
@@ -797,6 +899,22 @@
         source: q.source || "manual"
       };
     }
+    // Capacity split: a working-day length plus % slices. pct is clamped per
+    // item to 0..100; slices may sum to <100 (free time) or >100 (over-booked).
+    function normalizeCapacity(c) {
+      c = (c && typeof c === "object" && !Array.isArray(c)) ? c : {};
+      const hours = Number(c.hours);
+      const dpw = Number(c.daysPerWeek);
+      return {
+        hours: isFinite(hours) && hours > 0 ? Math.min(24, hours) : 8,
+        daysPerWeek: isFinite(dpw) && dpw > 0 ? Math.min(7, dpw) : 5,
+        items: Array.isArray(c.items) ? c.items.map(x => ({
+          id: x.id || uid(),
+          label: String(x.label || ""),
+          pct: Math.min(100, Math.max(0, Number(x.pct) || 0))
+        })) : []
+      };
+    }
 
     // Accept an arbitrary object (fresh CONFIG seed or imported file) and make
     // it safe + complete. Missing sections fall back to sensible empties, so a
@@ -827,6 +945,8 @@
         })) : [],
 
         quotas: Array.isArray(s.quotas) ? s.quotas.map(normalizeQuota) : [],
+
+        capacity: normalizeCapacity(s.capacity),
 
         blockers: Array.isArray(s.blockers) ? s.blockers.map(b => ({
           id: b.id || uid(), item: String(b.item || ""), who: String(b.who || ""),
@@ -887,6 +1007,7 @@
         bookmarkGroups: CONFIG.bookmarkGroups,
         todos: CONFIG.todos,
         quotas: CONFIG.quotas,
+        capacity: CONFIG.capacity,
         blockers: CONFIG.blockers,
         snippets: CONFIG.snippets,
         decisions: CONFIG.decisions,
@@ -935,6 +1056,7 @@
     // Transient UI state (never persisted): timer runtime, standup day view.
     const ui = {
       standupDay: todayKey(),
+      arranging: false,                                                  // card reorder mode (not persisted)
       timer: { phase: "idle", remaining: 0, running: false, endAt: 0 } // phase: idle|focus|break
     };
 
@@ -972,6 +1094,7 @@
       mutate(s => { s.theme = order[(order.indexOf(s.theme) + 1) % order.length]; }, { render: false });
       applyTheme();
     });
+    $("#btn-arrange").addEventListener("click", () => setArrangeMode(!ui.arranging));
 
     // ======================================================================
     //  Dialog helper — resolves to a field map, or null on cancel.
@@ -1030,7 +1153,8 @@
     function registerApplet(def) { APPLETS[def.id] = def; }
 
     function buildCard(def) {
-      const card = el("section", "card" + (def.wide ? " card--wide" : ""));
+      const card = el("section", "card" +
+        (def.superwide ? " card--superwide" : def.wide ? " card--wide" : ""));
       card.dataset.applet = def.id;
       card.setAttribute("aria-label", def.title);
       card.innerHTML =
@@ -1050,17 +1174,24 @@
       body: card.querySelector("[data-body]")
     });
 
+    // The full applet order: stored ids (registered only) + any missing at the end.
+    // Shared by renderGrid() and the reorder helpers so they never drift.
+    function effectiveOrder() {
+      const order = (state.applets.order || []).filter(id => APPLETS[id]);
+      Object.keys(APPLETS).forEach(id => { if (!order.includes(id)) order.push(id); });
+      return order;
+    }
+
     function renderGrid() {
       grid.innerHTML = "";
       mounted.clear();
-      const order = (state.applets.order || []).filter(id => APPLETS[id]);
-      // Include any registered applet missing from order, at the end.
-      Object.keys(APPLETS).forEach(id => { if (!order.includes(id)) order.push(id); });
+      grid.classList.toggle("grid--arranging", ui.arranging);
 
-      order.forEach(id => {
+      effectiveOrder().forEach(id => {
         if ((state.applets.disabled || []).includes(id)) return;
         const def = APPLETS[id];
         const card = buildCard(def);
+        if (ui.arranging) { card.draggable = true; card.tabIndex = 0; }
         grid.appendChild(card);
         if (def.mount) def.mount(card);
         if (def.render) def.render(card);
@@ -1069,6 +1200,88 @@
     }
     function renderApplets() { mounted.forEach(m => m.def.render && m.def.render(m.card)); }
     function renderApplet(id) { const m = mounted.get(id); if (m && m.def.render) m.def.render(m.card); }
+
+    // ---- Arrange mode: drag / keyboard reorder of cards ------------------
+    // Order lives in state.applets.order; a transient ui.arranging flag turns
+    // the grid into a draggable surface. Reorders operate on the FULL order
+    // (effectiveOrder) so hidden/disabled applets keep their slots.
+    function setArrangeMode(on) {
+      ui.arranging = on;
+      grid.classList.toggle("grid--arranging", on);
+      grid.querySelectorAll(".card").forEach(c => {
+        if (on) { c.draggable = true; c.tabIndex = 0; }
+        else { c.removeAttribute("draggable"); c.removeAttribute("tabindex");
+               c.classList.remove("dragging", "drop-before", "drop-after"); }
+      });
+      const b = $("#btn-arrange");
+      b.textContent = on ? "Done" : "Arrange";
+      b.classList.toggle("btn--primary", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on) toast("Drag cards to reorder (or focus one and use arrow keys). Click Done when finished.", "ok", 4000);
+    }
+    // Move dragId to just before/after targetId, then persist + rebuild.
+    function moveCard(dragId, targetId, before) {
+      const order = effectiveOrder();
+      const from = order.indexOf(dragId); if (from < 0) return;
+      order.splice(from, 1);
+      let to = order.indexOf(targetId); if (to < 0) return;
+      order.splice(before ? to : to + 1, 0, dragId);
+      mutate(s => { s.applets.order = order; }, { render: false });
+      renderGrid();
+    }
+    // Nudge one card one slot left/right (keyboard); returns the moved id.
+    function nudgeCard(id, dir) {
+      const order = effectiveOrder();
+      const i = order.indexOf(id), j = i + dir;
+      if (i < 0 || j < 0 || j >= order.length) return;
+      [order[i], order[j]] = [order[j], order[i]];
+      mutate(s => { s.applets.order = order; }, { render: false });
+      renderGrid();
+      const moved = mounted.get(id); if (moved) moved.card.focus();
+    }
+    // Delegated on the persistent #grid element (survives renderGrid rebuilds).
+    function wireCardDrag() {
+      let dragId = null;
+      const clearMarks = () => grid.querySelectorAll(".card").forEach(c => c.classList.remove("drop-before", "drop-after"));
+      grid.addEventListener("dragstart", e => {
+        if (!ui.arranging) return;
+        const card = e.target.closest(".card"); if (!card) return;
+        dragId = card.dataset.applet; card.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", dragId); } catch (_) {}
+      });
+      grid.addEventListener("dragend", () => {
+        dragId = null;
+        grid.querySelectorAll(".card").forEach(c => c.classList.remove("dragging", "drop-before", "drop-after"));
+      });
+      grid.addEventListener("dragover", e => {
+        if (!ui.arranging || !dragId) return;
+        e.preventDefault();
+        const card = e.target.closest(".card"); if (!card || card.dataset.applet === dragId) { clearMarks(); return; }
+        const r = card.getBoundingClientRect();
+        const before = (e.clientX - r.left) < r.width / 2;
+        clearMarks();
+        card.classList.add(before ? "drop-before" : "drop-after");
+      });
+      grid.addEventListener("drop", e => {
+        if (!ui.arranging || !dragId) return;
+        e.preventDefault();
+        const card = e.target.closest(".card"); if (!card) return;
+        const targetId = card.dataset.applet; if (targetId === dragId) return;
+        const r = card.getBoundingClientRect();
+        const before = (e.clientX - r.left) < r.width / 2;
+        moveCard(dragId, targetId, before);
+      });
+      grid.addEventListener("keydown", e => {
+        if (!ui.arranging) return;
+        const card = e.target.closest(".card"); if (!card) return;
+        const dir = (e.key === "ArrowLeft" || e.key === "ArrowUp") ? -1
+                  : (e.key === "ArrowRight" || e.key === "ArrowDown") ? 1 : 0;
+        if (!dir) return;
+        e.preventDefault();
+        nudgeCard(card.dataset.applet, dir);
+      });
+    }
 
     // ======================================================================
     //  APPLET DEFINITIONS
@@ -1183,7 +1396,7 @@
 
     // ---- Applet: To-do ---------------------------------------------------
     registerApplet({
-      id: "todo", title: "To-do",
+      id: "todo", title: "To-do", wide: true,
       mount(card) {
         const { body } = parts(card);
         body.innerHTML = `
@@ -1666,7 +1879,7 @@
         </div>`;
     }
     registerApplet({
-      id: "bookmarks", title: "Bookmarks", wide: true,
+      id: "bookmarks", title: "Bookmarks", superwide: true,
       mount(card) {
         const { head, body } = parts(card);
         head.innerHTML = `<button class="btn btn--sm" data-act="add-group">+ Group</button>`;
@@ -1729,6 +1942,154 @@
       }
     });
 
+    // ---- Applet: Capacity (split a working day across areas, by %) -------
+    // Fixed categorical palette (mid-lightness HSL triples that read on both
+    // the light and dark card surfaces). Wraps if there are more slices.
+    const CAPACITY_COLORS = [
+      "256 60% 60%", "199 78% 52%", "142 52% 45%", "32 92% 52%",
+      "340 68% 60%", "170 60% 42%", "268 50% 62%", "18 82% 56%"
+    ];
+    const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;   // 6.3 -> "6.3", 9 -> "9"
+    // Hours (decimal) -> "6h 18m" / "9h" / "45m".
+    function fmtHm(hoursDec) {
+      const totalMin = Math.round((Number(hoursDec) || 0) * 60);
+      const h = Math.floor(totalMin / 60), m = totalMin % 60;
+      if (h && m) return `${h}h ${m}m`;
+      if (h) return `${h}h`;
+      return `${m}m`;
+    }
+    // Derive pie segments + allocation totals purely from the capacity slice.
+    function computeCapacity(cap) {
+      const hours = cap.hours || 0;
+      const daysPerWeek = cap.daysPerWeek || 5;
+      const items = cap.items || [];
+      const sum = items.reduce((a, x) => a + (x.pct || 0), 0);
+      const denom = sum > 100 ? sum : 100;   // >100% fills the ring proportionally
+      const free = Math.max(0, 100 - sum);   // unallocated %
+      const over = Math.max(0, sum - 100);   // over-booked %
+      let acc = 0;
+      const segs = items.map((it, i) => {
+        const start = acc / denom * 100;
+        acc += (it.pct || 0);
+        const hoursDec = (it.pct || 0) / 100 * hours;
+        return {
+          it, color: CAPACITY_COLORS[i % CAPACITY_COLORS.length],
+          start, end: acc / denom * 100, hoursDec, weekHoursDec: hoursDec * daysPerWeek
+        };
+      });
+      return { hours, daysPerWeek, sum, denom, free, over, segs };
+    }
+    async function editCapacity(item) {
+      const isNew = !item; item = item || {};
+      const vals = await openDialog(isNew ? "Add capacity slice" : "Edit slice", [
+        { key: "label", label: "Label", value: item.label || "", placeholder: "e.g. REM – Dev" },
+        { key: "pct", label: "Percentage of day (%)", type: "number", min: 0, step: "0.5",
+          value: item.pct != null ? item.pct : "" }
+      ], isNew ? "Add" : "Save");
+      if (!vals) return;
+      const label = vals.label.trim(); if (!label) return;
+      const pct = Math.min(100, Math.max(0, Number(vals.pct) || 0));
+      mutate(s => {
+        if (isNew) s.capacity.items.push({ id: uid(), label, pct });
+        else { const t = s.capacity.items.find(x => x.id === item.id); if (t) { t.label = label; t.pct = pct; } }
+      }, { only: ["capacity"] });
+    }
+    async function editCapacityHours() {
+      const vals = await openDialog("Working week", [
+        { key: "hours", label: "Hours in a working day", type: "number", min: 1, step: "0.5",
+          value: state.capacity.hours },
+        { key: "daysPerWeek", label: "Working days per week", type: "number", min: 1, max: 7, step: "0.5",
+          value: state.capacity.daysPerWeek }
+      ], "Save");
+      if (!vals) return;
+      const h = Number(vals.hours); if (!isFinite(h) || h <= 0) return;
+      const d = Number(vals.daysPerWeek);
+      mutate(s => {
+        s.capacity.hours = Math.min(24, h);
+        if (isFinite(d) && d > 0) s.capacity.daysPerWeek = Math.min(7, d);
+      }, { only: ["capacity"] });
+    }
+    registerApplet({
+      id: "capacity", title: "Capacity",
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML =
+          `<button class="btn btn--sm" data-act="hours" title="Set working-day length">Day length</button>
+           <button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => {
+          if (e.target.closest("[data-act=add]")) editCapacity(null);
+          else if (e.target.closest("[data-act=hours]")) editCapacityHours();
+        });
+        body.addEventListener("click", e => {
+          const row = e.target.closest(".cap-row"); if (!row || !row.dataset.id) return;
+          const it = state.capacity.items.find(x => x.id === row.dataset.id); if (!it) return;
+          if (e.target.closest("[data-act=edit]")) editCapacity(it);
+          else if (e.target.closest("[data-act=del]") && confirm(`Delete “${it.label || "this slice"}”?`))
+            mutate(s => { s.capacity.items = s.capacity.items.filter(x => x.id !== it.id); }, { only: ["capacity"] });
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const cap = state.capacity;
+        sub.textContent = `${round1(cap.hours)}h day · ${round1(cap.daysPerWeek)}d week`;
+        if (!cap.items.length) {
+          body.innerHTML = `<p class="empty">No slices yet. Click “+ Add” to divide your day (e.g. “REM – Dev” 70%).</p>`;
+          return;
+        }
+        const c = computeCapacity(cap);
+
+        const stops = c.segs.map(s => `hsl(${s.color}) ${s.start.toFixed(3)}% ${s.end.toFixed(3)}%`);
+        if (c.free > 0) stops.push(`hsl(var(--muted)) ${(c.sum / c.denom * 100).toFixed(3)}% 100%`);
+        const gradient = stops.length ? `conic-gradient(${stops.join(", ")})` : `conic-gradient(hsl(var(--muted)) 0 100%)`;
+
+        const headRow = `
+          <li class="cap-row cap-head" aria-hidden="true">
+            <i class="cap-sw" style="visibility:hidden"></i>
+            <span class="cap-lbl"></span>
+            <span class="cap-pct">%</span>
+            <span class="cap-hrs">/ day</span>
+            <span class="cap-wk">/ week</span>
+            <span class="cap-acts"></span>
+          </li>`;
+        const rows = c.segs.map(s => `
+          <li class="cap-row" data-id="${s.it.id}">
+            <i class="cap-sw" style="background:hsl(${s.color})"></i>
+            <span class="cap-lbl">${escapeHtml(s.it.label || "Untitled")}</span>
+            <span class="cap-pct">${round1(s.it.pct)}%</span>
+            <span class="cap-hrs">${fmtHm(s.hoursDec)}</span>
+            <span class="cap-wk">${fmtHm(s.weekHoursDec)}</span>
+            <span class="cap-acts">
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="edit" title="Edit">✏️</button>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">🗑️</button>
+            </span>
+          </li>`).join("");
+        const freeRow = c.free > 0 ? `
+          <li class="cap-row cap-row--free">
+            <i class="cap-sw" style="background:hsl(var(--muted))"></i>
+            <span class="cap-lbl">Unallocated</span>
+            <span class="cap-pct">${round1(c.free)}%</span>
+            <span class="cap-hrs">${fmtHm(c.free / 100 * c.hours)}</span>
+            <span class="cap-wk">${fmtHm(c.free / 100 * c.hours * c.daysPerWeek)}</span>
+            <span class="cap-acts"></span>
+          </li>` : "";
+
+        const wk = h => `${fmtHm(h)}/day · ${fmtHm(h * c.daysPerWeek)}/week`;
+        let status, tone;
+        if (c.over > 0)       { status = `Over-allocated by ${round1(c.over)}% (${wk(c.over / 100 * c.hours)})`; tone = "danger"; }
+        else if (c.free > 0)  { status = `${round1(c.free)}% unallocated (${wk(c.free / 100 * c.hours)} free)`;  tone = "warn"; }
+        else                  { status = `Fully allocated — ${wk(c.hours)}`;                                     tone = "ok"; }
+
+        body.innerHTML = `
+          <div class="cap">
+            <div class="cap-pie" style="background:${gradient}">
+              <div class="cap-hole"><b>${round1(c.hours)}</b><span>h/day</span></div>
+            </div>
+            <ul class="cap-legend">${headRow}${rows}${freeRow}</ul>
+          </div>
+          <div class="cap-foot cap-foot--${tone}">${escapeHtml(status)}</div>`;
+      }
+    });
+
     // ======================================================================
     //  Export / Import
     // ======================================================================
@@ -1776,6 +2137,7 @@
     ui.timer.remaining = state.deepwork.focusMin * 60;
     applyTheme();
     renderGrid();
+    wireCardDrag();   // delegated on #grid; guarded by ui.arranging
 
     // One 1s loop drives per-second applets (clock, timer) and midnight rollover.
     let activeDay = todayKey();

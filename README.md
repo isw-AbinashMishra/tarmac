@@ -47,12 +47,13 @@ Ten cards, all pure local state:
 | `quota`     | Monthly quota burn-down    | `{label, monthlyLimit, used, resetDay}`; pace = used% vs elapsed%.|
 | `deepwork`  | Deep-work timer            | Pomodoro (default 50/10). Counts focus blocks + interruptions per day. |
 | `tally`     | Meeting / focus tally      | Two ± counters in 0.5 steps, ratio, rolling 7-day sparkline.     |
+| `capacity`  | Working-day capacity split | `{hours, daysPerWeek, items:[{label, pct}]}`; donut pie + per-slice time **per day and per week** (e.g. 10% of an 8h day = 48m/day → 4h/week); flags over/under-allocation. Set day length + days/week via the “Day length” button. |
 | `todo`      | To-do list                 | Add/complete/delete, drag-to-reorder, optional due date, open badge. |
 | `standup`   | Standup notes buffer       | Free text per day, day-picker for history, "Copy as standup".    |
 | `blockers`  | Waiting-on / blocked       | `{item, who, since}`; shows age in days, sorted oldest first.    |
+| `bookmarks` | Bookmarks                  | Grouped links with optional emoji/icon; editable in-app + config.|
 | `snippets`  | Snippet / command stash    | `{label, snippet, tag}`; click-to-copy, text filter.            |
 | `decisions` | Decision log (light ADR)   | `{date, decision, why}`; newest first, searchable.              |
-| `bookmarks` | Bookmarks                  | Grouped links with optional emoji/icon; editable in-app + config.|
 
 ---
 
@@ -86,12 +87,15 @@ things in-app, or Export → edit the JSON → Import.
 
 ### Enable / disable / reorder applets
 
-Config-driven via `state.applets`:
+**Reorder in-app:** click **Arrange** in the toolbar, drag cards into the order you want
+(or focus a card and use the arrow keys), then click **Done**. The order saves automatically.
+
+Also config-driven via `state.applets`:
 
 ```js
 applets: {
-  order:    ["clock", "quota", "deepwork", "tally", "todo",
-             "standup", "blockers", "snippets", "decisions", "bookmarks"],
+  order:    ["clock", "quota", "deepwork", "tally", "capacity", "todo",
+             "standup", "blockers", "bookmarks", "snippets", "decisions"],
   disabled: []            // e.g. ["decisions"] to hide the decision log
 }
 ```
@@ -142,13 +146,17 @@ Your real bookmark URLs and first quota, by line number:
 
 | Line | Change                                                                     |
 | ---- | ------------------------------------------------------------------------- |
-| 591  | `{ label: "Jira",   url: "#REPLACE-ME", ... }` → your Jira URL            |
-| 592  | `{ label: "GitHub", url: "#REPLACE-ME", ... }` → your GitHub URL          |
-| 593  | Google (already `https://www.google.com`) — change if you like            |
-| 594  | Claude (already `https://claude.ai`) — change if you like                 |
-| 607  | `label: "GitHub credits"` — rename your first quota                       |
-| 609  | `monthlyLimit: 1000` — your allowance                                     |
-| 611  | `resetDay: 1` — the day-of-month it resets (1–28)                         |
+| 626  | `{ label: "Jira",   url: "#REPLACE-ME", ... }` → your Jira URL            |
+| 627  | `{ label: "GitHub", url: "#REPLACE-ME", ... }` → your GitHub URL          |
+| 628  | Google (already `https://www.google.com`) — change if you like            |
+| 629  | Claude (already `https://claude.ai`) — change if you like                 |
+| 642  | `label: "GitHub credits"` — rename your first quota                       |
+| 644  | `monthlyLimit: 1000` — your allowance                                     |
+| 646  | `resetDay: 1` — the day-of-month it resets (1–28)                         |
+
+> Line numbers drift as the file changes. If they're off, just search `index.html`
+> for `#REPLACE-ME` (the two bookmarks to fill in) and `GitHub credits` (your first
+> quota). See `CLAUDE.md` for the full grep-anchor map.
 
 > ⚠️ Editing `CONFIG` only affects a **fresh install**. If you've already opened the app
 > (state is saved), either run `tarmac.reset()` in the console first, or just edit those
