@@ -182,7 +182,7 @@
     h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 
     /* --- layout ------------------------------------------------------------ */
-    .wrap { max-width: 1200px; margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
+    .wrap { margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
 
     header.top {
       display: flex; align-items: center; gap: 12px;
@@ -197,7 +197,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      grid-template-columns: repeat(var(--grid-cols, 3), minmax(0, 1fr));
       gap: 14px;
       align-items: stretch;
     }
@@ -205,6 +205,7 @@
     .card--superwide { grid-column: span 3; }
     @media (max-width: 1060px) { .card--superwide { grid-column: span 2; } }
     @media (max-width: 720px)  { .card--wide, .card--superwide { grid-column: span 1; } }
+    .grid--auto-cols { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 
     /* Arrange mode: drag cards to reorder (toggled by #btn-arrange). */
     .grid--arranging .card { cursor: move; user-select: none; outline: 1px dashed hsl(var(--border)); }
@@ -543,6 +544,16 @@
       </div>
       <div class="spacer"></div>
       <div class="toolbar">
+        <label class="btn btn--ghost btn--sm" title="Grid columns" style="display:inline-flex;align-items:center;gap:4px;font-size:.85rem">
+          Cols
+          <select id="sel-cols" style="background:hsl(var(--card));color:hsl(var(--foreground));border:1px solid hsl(var(--border));border-radius:4px;padding:2px 4px;font-size:.85rem;border: 1px solid hsl(var(--border));border-radius: 999px;height: 34px;">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="auto">Auto</option>
+          </select>
+        </label>
         <button class="btn btn--icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme">🌓</button>
         <button class="btn" id="btn-arrange" title="Drag cards to reorder" aria-pressed="false">Arrange</button>
         <button class="btn" id="btn-export" title="Download a JSON backup">Export</button>
@@ -680,6 +691,7 @@
     // ======================================================================
     const CONFIG = {
       theme: "system", // "system" | "light" | "dark"
+      gridColumns: 3,  // number of grid columns: 2, 3, 4, 5, or "auto"
 
       // Which applets are shown, and in what order (top-to-bottom).
       applets: {
@@ -953,6 +965,7 @@
       const out = {
         version: STATE_VERSION,
         theme: ["system", "light", "dark"].includes(s.theme) ? s.theme : "system",
+        gridColumns: s.gridColumns === "auto" ? "auto" : clampInt(s.gridColumns, 2, 5, CONFIG.gridColumns),
 
         applets: {
           order: Array.isArray(ap.order) ? ap.order.map(String) : CONFIG.applets.order.slice(),
@@ -1128,6 +1141,25 @@
       mutate(s => { s.theme = order[(order.indexOf(s.theme) + 1) % order.length]; }, { render: false });
       applyTheme();
     });
+    // ── Grid columns selector ──────────────────────────────────────────
+    function applyGridColumns() {
+      const v = state.gridColumns;
+      const g = $("#grid");
+      if (v === "auto") {
+        g.style.removeProperty("--grid-cols");
+        g.classList.add("grid--auto-cols");
+      } else {
+        g.style.setProperty("--grid-cols", v);
+        g.classList.remove("grid--auto-cols");
+      }
+      $("#sel-cols").value = String(v);
+    }
+    $("#sel-cols").addEventListener("change", (e) => {
+      const val = e.target.value === "auto" ? "auto" : Number(e.target.value);
+      mutate(s => { s.gridColumns = val; }, { render: false });
+      applyGridColumns();
+    });
+
     $("#btn-arrange").addEventListener("click", () => setArrangeMode(!ui.arranging));
 
     // ======================================================================
@@ -2384,7 +2416,7 @@
           state = normalizeState(parsed);   // validates + fills gaps; never partially applied
           pruneDaily();
           ui.standupDay = todayKey();
-          saveNow(); applyTheme(); renderGrid();
+          saveNow(); applyTheme(); applyGridColumns(); renderGrid();
           toast("Import complete.", "ok");
         } catch (err) {
           toast("Import failed: " + err.message + " (your data is unchanged).", "danger", 6000);
@@ -2399,6 +2431,7 @@
     // ======================================================================
     ui.timer.remaining = state.deepwork.focusMin * 60;
     applyTheme();
+    applyGridColumns();
     renderGrid();
     wireCardDrag();   // delegated on #grid; guarded by ui.arranging
 
