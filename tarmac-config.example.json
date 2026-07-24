@@ -1,8 +1,8 @@
 {
-  "version": 4,
+  "version": 6,
   "theme": "system",
   "applets": {
-    "order": ["clock", "quota", "deepwork", "tally", "capacity", "todo", "standup", "blockers", "bookmarks", "snippets", "decisions"],
+    "order": ["clock", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"],
     "disabled": []
   },
   "bookmarkGroups": [
@@ -51,5 +51,6 @@
     { "date": "2026-07-15", "decision": "Keep tarmac a single static file", "why": "No build step; works from file:// as a Chrome homepage." }
   ],
   "deepwork": { "focusMin": 50, "breakMin": 10 },
+  "water": { "target": 8 },
   "daily": {}
 }

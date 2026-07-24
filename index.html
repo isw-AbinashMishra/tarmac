@@ -61,6 +61,9 @@
      // ── Applet: deepwork (pomodoro settings; counts are day-scoped) ──────
      deepwork: { focusMin: 50, breakMin: 10 },
 
+     // ── Applet: water (daily glass target; count is day-scoped) ─────────
+     water: { target: 8 },
+
      // ── DAY-SCOPED STATE ────────────────────────────────────────────────
      // Applets that reset each day store their data under a date key.
      // We compute today's key on load/tick, so rollover at local midnight is
@@ -69,7 +72,9 @@
        "YYYY-MM-DD": {
          standup:  { text: "" },                        // applet: standup
          deepwork: { blocks: 0, interruptions: 0 },     // applet: deepwork
-         tally:    { meetingHours: 0, focusHours: 0 }   // applet: tally
+         tally:    { meetingHours: 0, focusHours: 0 },  // applet: tally
+         water:    { count: 0 },                        // applet: water
+         walks:    { count: 0 }                         // applet: walks
        }
      }
    }
@@ -320,7 +325,7 @@
     .bm-tile .meta { min-width: 0; }
     .bm-tile .meta .lbl { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .bm-tile .meta .href { font-size: 11px; color: hsl(var(--muted-foreground));
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        display: block; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;  }
     .bm-tile .edit {
       position: absolute; top: 4px; right: 4px; opacity: 0;
       transition: opacity .12s;
@@ -415,8 +420,11 @@
       color: hsl(var(--muted-foreground)); }
     .timer .count { font-size: 52px; font-weight: 700; letter-spacing: -0.02em;
       font-variant-numeric: tabular-nums; line-height: 1.1; margin: 2px 0 10px; }
-    .timer .count.break { color: hsl(var(--ok)); }
+    .timer .count.break, .timer .count.done { color: hsl(var(--ok)); }
     .timer-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .wd-set { display: flex; gap: 8px; align-items: flex-end; justify-content: center;
+      flex-wrap: wrap; margin-top: 12px; }
+    .wd-set .field { margin: 0; }
     .dw-stats { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
     .dw-stat { text-align: center; padding: 8px 14px; border: 1px solid hsl(var(--border));
       border-radius: calc(var(--radius) - 2px); background: hsl(var(--background)); min-width: 92px; }
@@ -436,11 +444,16 @@
     .spark7 .day .b { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; background: hsl(var(--muted)); }
     .spark7 .day .b.mtg { background: hsl(var(--warn)); }
     .spark7 .day .b.foc { background: hsl(var(--ok)); }
+    .spark7 .day .b.walk { background: hsl(var(--primary)); }
     .spark7-lbls { display: flex; gap: 6px; margin-top: 4px; }
     .spark7-lbls span { flex: 1; text-align: center; font-size: 10px; color: hsl(var(--muted-foreground)); }
     .spark-legend { display: flex; gap: 12px; justify-content: center; font-size: 11px;
       color: hsl(var(--muted-foreground)); margin-top: 8px; }
     .spark-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+
+    /* --- dev quote of the day ------------------------------------------------ */
+    .quote-text { font-size: 16px; line-height: 1.5; font-style: italic; margin: 4px 0 10px 0; }
+    .quote-author { font-size: 12px; color: hsl(var(--muted-foreground)); text-align: right; }
 
     /* --- capacity ---------------------------------------------------------- */
     .cap { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
@@ -567,8 +580,8 @@
           <p>Applets are also config-driven. Edit <code>state.applets.order</code> (the list of applet ids,
           top-to-bottom) and <code>state.applets.disabled</code> (ids to hide). Do it by editing
           <code>CONFIG.applets</code> in the source for a fresh install, or Export → edit the JSON →
-          Import. Applet ids: <code>clock, quota, deepwork, tally, capacity, todo, standup, blockers,
-          snippets, decisions, bookmarks</code>.</p>
+          Import. Applet ids: <code>clock, quota, deepwork, tally, water, walks, capacity, todo, standup,
+          blockers, snippets, decisions, bookmarks, quotes</code>.</p>
 
           <h4>Add a bookmark group</h4>
           <ul>
@@ -587,9 +600,10 @@
           </ul>
 
           <h4>Where day-scoped data lives</h4>
-          <p>Standup notes, deep-work counts, and the meeting/focus tally are stored per day under
-          <code>state.daily["YYYY-MM-DD"]</code>. Today’s key is computed on load and on tick, so buffers
-          roll over automatically at local midnight. Past days are kept for history and pruned after 30 days.</p>
+          <p>Standup notes, deep-work counts, the meeting/focus tally, and the water/walk-break counts
+          are stored per day under <code>state.daily["YYYY-MM-DD"]</code>. Today’s key is computed on load
+          and on tick, so buffers roll over automatically at local midnight. Past days are kept for history
+          and pruned after 30 days.</p>
 
           <h4>Add a new applet</h4>
           <p>See the big comment block at the top of the <code>&lt;script&gt;</code> (“HOW TO ADD A NEW
@@ -643,12 +657,14 @@
     //    Boot + timers          grep  Boot + timers
     //
     //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
-    //    ids: clock quota todo deepwork tally capacity standup blockers snippets decisions bookmarks
+    //    ids: clock quota todo deepwork tally capacity workday standup blockers snippets decisions
+    //         bookmarks water walks quotes
     //  Applet-specific helpers (grep the function name):
     //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag
-    //    deepwork:  timerStart/Pause/Reset/Complete
+    //    deepwork:  timerStart/Pause/Reset/Complete       workday: formatHMS
     //    standup:   openStandupCopy               snippets:  editSnippet
     //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
+    //    quotes:    quoteOfDay hashStr
     //
     //  See CLAUDE.md for the applet contract, invariants, and how to add one.
     //  (Line numbers drift with edits — anchor on the strings above, not on lines.)
@@ -668,8 +684,8 @@
       // Which applets are shown, and in what order (top-to-bottom).
       applets: {
         order: [
-          "clock", "quota", "deepwork", "tally", "capacity", "todo",
-          "standup", "blockers", "bookmarks", "snippets", "decisions"
+          "clock", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo",
+          "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"
         ],
         disabled: []   // e.g. ["decisions"] to hide the decision log
       },
@@ -729,11 +745,14 @@
       },
 
       // ── Applet: deepwork (pomodoro lengths; daily counts are day-scoped) ─
-      deepwork: { focusMin: 50, breakMin: 10 }
+      deepwork: { focusMin: 50, breakMin: 10 },
+
+      // ── Applet: water (daily glass target; count is day-scoped) ─────────
+      water: { target: 8 }
     };
 
     const STORAGE_KEY = "tarmac:state";
-    const STATE_VERSION = 4;
+    const STATE_VERSION = 6;
     const DAILY_KEEP_DAYS = 30;
 
     // ======================================================================
@@ -851,6 +870,11 @@
       const m = Math.floor(sec / 60), s = sec % 60;
       return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
     }
+    function formatHMS(sec) {
+      sec = Math.max(0, Math.round(sec));
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
     const fmt = (n) => (Number(n) || 0).toLocaleString();
     // Last n local date keys, oldest first, ending today (DST-safe via setDate).
     function lastNDays(n) {
@@ -869,7 +893,10 @@
     const DAILY_DEFAULTS = {
       standup:  () => ({ text: "" }),
       deepwork: () => ({ blocks: 0, interruptions: 0 }),
-      tally:    () => ({ meetingHours: 0, focusHours: 0 })
+      tally:    () => ({ meetingHours: 0, focusHours: 0 }),
+      workday:  () => ({ startedAt: "" }),
+      water:    () => ({ count: 0 }),
+      walks:    () => ({ count: 0 })
     };
     function day(appletId, key = todayKey()) {
       if (!state.daily) state.daily = {};
@@ -968,6 +995,10 @@
           breakMin: clampInt((s.deepwork && s.deepwork.breakMin), 1, 120, CONFIG.deepwork.breakMin)
         },
 
+        water: {
+          target: clampInt((s.water && s.water.target), 1, 20, CONFIG.water.target)
+        },
+
         daily: normalizeDaily(s.daily)
       };
       return out;
@@ -992,7 +1023,10 @@
             tally: {
               meetingHours: Number(src.tally && src.tally.meetingHours) || 0,
               focusHours: Number(src.tally && src.tally.focusHours) || 0
-            }
+            },
+            workday: { startedAt: String((src.workday && src.workday.startedAt) || "") },
+            water: { count: Math.max(0, Number(src.water && src.water.count) || 0) },
+            walks: { count: Math.max(0, Number(src.walks && src.walks.count) || 0) }
           };
         });
       }
@@ -1628,7 +1662,7 @@
 
     // ---- Applet: Standup notes buffer (day-scoped) ----------------------
     registerApplet({
-      id: "standup", title: "Standup notes", wide: true,
+      id: "standup", title: "Standup notes", superwide: true,
       mount(card) {
         const { body } = parts(card);
         body.classList.add("standup");
@@ -1745,7 +1779,7 @@
 
     // ---- Applet: Snippet / command stash --------------------------------
     registerApplet({
-      id: "snippets", title: "Snippets", wide: false,
+      id: "snippets", title: "Snippets", wide: true,
       mount(card) {
         const { head, body } = parts(card);
         head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
@@ -2087,6 +2121,235 @@
             <ul class="cap-legend">${headRow}${rows}${freeRow}</ul>
           </div>
           <div class="cap-foot cap-foot--${tone}">${escapeHtml(status)}</div>`;
+      }
+    });
+
+    // ---- Applet: Workday countdown ---------------------------------------
+    // Start time is day-scoped (state.daily[today].workday); day length reads
+    // from the Capacity applet's "hours" setting, so there's one place to tune it.
+    registerApplet({
+      id: "workday", title: "Time left today",
+      mount(card) {
+        const { body } = parts(card);
+        body.innerHTML = `
+          <div class="timer">
+            <div class="phase" data-wd-phase></div>
+            <div class="count" data-wd-count>--:--:--</div>
+            <div class="bar"><div class="bar__fill" data-wd-fill style="width:0%"></div></div>
+            <div class="timer-controls">
+              <button class="btn btn--primary" data-act="start">Start day</button>
+              <button class="btn btn--ghost" data-act="reset">Reset</button>
+            </div>
+          </div>
+          <form class="wd-set" data-form>
+            <label class="field">
+              <span>Or set start time</span>
+              <input class="input" type="time" data-wd-time style="width:110px" aria-label="Start time" />
+            </label>
+            <button class="btn btn--sm" type="submit">Set</button>
+          </form>`;
+        body.addEventListener("click", e => {
+          if (e.target.closest("[data-act=start]"))
+            mutate(s => { day("workday").startedAt = new Date().toISOString(); }, { only: ["workday"] });
+          else if (e.target.closest("[data-act=reset]"))
+            mutate(s => { day("workday").startedAt = ""; }, { only: ["workday"] });
+        });
+        body.querySelector("[data-form]").addEventListener("submit", e => {
+          e.preventDefault();
+          const input = body.querySelector("[data-wd-time]");
+          const m = /^(\d{1,2}):(\d{2})$/.exec(input.value); if (!m) return;
+          const at = new Date(); at.setHours(Number(m[1]), Number(m[2]), 0, 0);
+          mutate(s => { day("workday").startedAt = at.toISOString(); }, { only: ["workday"] });
+          input.value = "";
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const d = day("workday");
+        const hours = state.capacity.hours || 8;
+        const start = d.startedAt ? new Date(d.startedAt) : null;
+        const started = !!(start && !isNaN(start));
+        const phaseEl = body.querySelector("[data-wd-phase]");
+        const countEl = body.querySelector("[data-wd-count]");
+        const fillEl = body.querySelector("[data-wd-fill]");
+        body.querySelector("[data-act=start]").textContent = started ? "Restart" : "Start day";
+        body.querySelector("[data-act=reset]").disabled = !started;
+
+        if (!started) {
+          sub.textContent = `${round1(hours)}h day`;
+          phaseEl.textContent = "Not started";
+          countEl.textContent = "--:--:--";
+          countEl.classList.remove("done");
+          fillEl.style.width = "0%";
+          fillEl.classList.remove("warn", "danger");
+          return;
+        }
+        const totalMs = hours * 3600000;
+        const end = new Date(start.getTime() + totalMs);
+        const remaining = end.getTime() - Date.now();
+        const pct = Math.min(100, Math.max(0, (Date.now() - start.getTime()) / totalMs * 100));
+        const timeLbl = t => t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        sub.textContent = `Started ${timeLbl(start)} · ends ~${timeLbl(end)}`;
+        fillEl.style.width = pct.toFixed(1) + "%";
+        fillEl.classList.toggle("warn", remaining > 0 && remaining <= totalMs * 0.15);
+        fillEl.classList.toggle("danger", remaining <= 0);
+        if (remaining > 0) {
+          phaseEl.textContent = "Left today";
+          countEl.textContent = formatHMS(remaining / 1000);
+          countEl.classList.remove("done");
+        } else {
+          phaseEl.textContent = "Day complete";
+          countEl.textContent = formatHMS(-remaining / 1000) + " over";
+          countEl.classList.add("done");
+        }
+      },
+      tick(card) { this.render(card); }
+    });
+
+    // ---- Applet: Water tracker (daily glass target, day-scoped count) ---
+    registerApplet({
+      id: "water", title: "Water",
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--ghost btn--sm btn--icon" data-act="settings" title="Set daily target">⚙️</button>`;
+        head.addEventListener("click", async e => {
+          if (!e.target.closest("[data-act=settings]")) return;
+          const vals = await openDialog("Water settings", [
+            { key: "target", label: "Daily target (glasses)", type: "number", min: 1, value: state.water.target }
+          ], "Save");
+          if (!vals) return;
+          mutate(s => { s.water.target = clampInt(vals.target, 1, 20, s.water.target); }, { only: ["water"] });
+        });
+        body.addEventListener("click", e => {
+          if (e.target.closest("[data-act=add]")) {
+            const before = day("water").count;
+            mutate(s => { day("water").count += 1; }, { only: ["water"] });
+            if (before + 1 === state.water.target) toast("💧 Hydration goal reached — nice work!", "ok");
+          } else if (e.target.closest("[data-act=sub]")) {
+            mutate(s => { const d = day("water"); d.count = Math.max(0, d.count - 1); }, { only: ["water"] });
+          }
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const d = day("water");
+        const target = state.water.target;
+        const pct = Math.min(100, (d.count / target) * 100);
+        const full = d.count >= target;
+        sub.textContent = `${d.count} / ${target} today`;
+        body.innerHTML = `
+          <div style="text-align:center;font-size:36px;line-height:1">${full ? "🥤" : "🥛"}</div>
+          <div class="bar" style="margin-top:10px" title="${pct.toFixed(0)}% of today's target">
+            <div class="bar__fill" style="width:${pct.toFixed(1)}%"></div>
+          </div>
+          <div class="quota-nums" style="margin-top:8px;text-align:center">
+            <b>${d.count}</b> of <b>${target}</b> glasses today ${full ? "🎉" : ""}
+          </div>
+          <div class="timer-controls" style="margin-top:10px">
+            <button class="btn btn--primary" data-act="add">+ Glass</button>
+            <button class="btn" data-act="sub" ${d.count <= 0 ? "disabled" : ""}>−1</button>
+          </div>`;
+      }
+    });
+
+    // ---- Applet: Walk breaks (day-scoped counter + rolling 7-day trend) -
+    registerApplet({
+      id: "walks", title: "Walk breaks",
+      mount(card) {
+        const { body } = parts(card);
+        body.addEventListener("click", e => {
+          const btn = e.target.closest("[data-delta]"); if (!btn) return;
+          const delta = Number(btn.dataset.delta);
+          mutate(s => { const d = day("walks"); d.count = Math.max(0, d.count + delta); }, { only: ["walks"] });
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const d = day("walks");
+        sub.textContent = `${d.count} today`;
+        const days = lastNDays(7).map(k => {
+          const wd = (state.daily[k] && state.daily[k].walks) || { count: 0 };
+          return { k, c: wd.count };
+        });
+        const max = Math.max(2, ...days.map(x => x.c));
+        const spark = days.map(x => `
+          <div class="day" title="${x.k}: ${x.c} walk${x.c === 1 ? "" : "s"}">
+            <div class="b walk" style="height:${(x.c / max * 100).toFixed(0)}%"></div>
+          </div>`).join("");
+        const lbls = days.map(x => `<span>${x.k.slice(8)}</span>`).join("");
+        body.innerHTML = `
+          <div class="counter" style="max-width:220px;margin:0 auto 14px">
+            <div class="lbl">Walks today</div>
+            <div class="val">${d.count}</div>
+            <div class="ctrls">
+              <button class="btn btn--sm btn--icon" data-delta="-1" title="−1" ${d.count <= 0 ? "disabled" : ""}>−</button>
+              <button class="btn btn--sm btn--icon" data-delta="1" title="+1">+</button>
+            </div>
+          </div>
+          <div class="spark7">${spark}</div>
+          <div class="spark7-lbls">${lbls}</div>`;
+      }
+    });
+
+    // ---- Applet: Dev quote of the day ------------------------------------
+    // Static offline set — see "FUTURE: live data" note at the top of this
+    // file: a live quotes API is out of scope for a file:// app (violates the
+    // no-external-network rule, and fetch() would be blocked by CORS under
+    // file:// anyway). The quote rotates once a day, picked deterministically
+    // from today's date key so it's stable across renders/tabs.
+    const PROGRAMMING_QUOTES = [
+      { text: "Any fool can write code that a computer can understand. Good programmers write code that humans can understand.", author: "Martin Fowler" },
+      { text: "Premature optimization is the root of all evil.", author: "Donald Knuth" },
+      { text: "Talk is cheap. Show me the code.", author: "Linus Torvalds" },
+      { text: "Programs must be written for people to read, and only incidentally for machines to execute.", author: "Harold Abelson" },
+      { text: "Simplicity is prerequisite for reliability.", author: "Edsger W. Dijkstra" },
+      { text: "Debugging is twice as hard as writing the code in the first place.", author: "Brian Kernighan" },
+      { text: "First, solve the problem. Then, write the code.", author: "John Johnson" },
+      { text: "Code is like humor. When you have to explain it, it's bad.", author: "Cory House" },
+      { text: "Make it work, make it right, make it fast.", author: "Kent Beck" },
+      { text: "The only way to go fast is to go well.", author: "Robert C. Martin" },
+      { text: "Testing shows the presence, not the absence of bugs.", author: "Edsger W. Dijkstra" },
+      { text: "Walking on water and developing software from a specification are easy if both are frozen.", author: "Edward V. Berard" },
+      { text: "It's not a bug – it's an undocumented feature.", author: "Anonymous" },
+      { text: "The most disastrous thing that you can ever learn is your first programming language.", author: "Alan Kay" },
+      { text: "Deleted code is debugged code.", author: "Jeff Sickel" },
+      { text: "There are only two hard things in Computer Science: cache invalidation and naming things.", author: "Phil Karlton" },
+      { text: "Weeks of coding can save you hours of planning.", author: "Anonymous" },
+      { text: "A good programmer is someone who always looks both ways before crossing a one-way street.", author: "Doug Linder" },
+      { text: "Before software can be reusable it first has to be usable.", author: "Ralph Johnson" },
+      { text: "Optimism is an occupational hazard of programming; feedback is the treatment.", author: "Kent Beck" },
+      { text: "The most important property of a program is whether it accomplishes the intention of its user.", author: "C.A.R. Hoare" },
+      { text: "Simplicity is the soul of efficiency.", author: "Austin Freeman" },
+      { text: "Good code is its own best documentation.", author: "Steve McConnell" },
+      { text: "One of my most productive days was throwing away 1,000 lines of code.", author: "Ken Thompson" },
+      { text: "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away.", author: "Antoine de Saint-Exupéry" },
+      { text: "Given enough eyeballs, all bugs are shallow.", author: "Eric S. Raymond" },
+      { text: "Programming isn't about what you know; it's about what you can figure out.", author: "Chris Pine" },
+      { text: "Truth can only be found in one place: the code.", author: "Robert C. Martin" },
+      { text: "Measuring programming progress by lines of code is like measuring aircraft building progress by weight.", author: "Bill Gates" },
+      { text: "If debugging is the process of removing bugs, then programming must be the process of putting them in.", author: "Edsger W. Dijkstra" },
+      { text: "Sometimes it pays to stay in bed on Monday, rather than spending the rest of the week debugging Monday's code.", author: "Dan Salomon" },
+      { text: "The function of good software is to make the complex appear simple.", author: "Grady Booch" },
+      { text: "A language that doesn't affect the way you think about programming is not worth knowing.", author: "Alan Perlis" },
+      { text: "Programming is the art of telling another human being what one wants the computer to do.", author: "Donald Knuth" },
+      { text: "Java is to JavaScript what car is to Carpet.", author: "Chris Heilmann" }
+    ];
+    function hashStr(s) {
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return Math.abs(h);
+    }
+    function quoteOfDay(key = todayKey()) {
+      return PROGRAMMING_QUOTES[hashStr(key) % PROGRAMMING_QUOTES.length];
+    }
+    registerApplet({
+      id: "quotes", title: "Dev quote of the day",
+      render(card) {
+        const { body } = parts(card);
+        const q = quoteOfDay();
+        body.innerHTML = `
+          <blockquote class="quote-text">“${escapeHtml(q.text)}”</blockquote>
+          <div class="quote-author">— ${escapeHtml(q.author)}</div>`;
       }
     });
 
