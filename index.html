@@ -164,6 +164,61 @@
       --shadow: 0 1px 2px hsl(0 0% 0% / 0.4);
     }
 
+    /* ── Liquid Glass theme ───────────────────────────────────────────── */
+    html.liquid-glass {
+      --background: 220 20% 94%;
+      --foreground: 220 10% 12%;
+      --card: 0 0% 100% / 0.45;
+      --card-foreground: 220 10% 12%;
+      --muted: 220 15% 92%;
+      --muted-foreground: 220 6% 40%;
+      --border: 0 0% 100% / 0.5;
+      --input: 220 15% 88%;
+      --primary: 210 60% 50%;
+      --primary-foreground: 0 0% 100%;
+      --accent: 210 50% 92%;
+      --accent-foreground: 210 50% 28%;
+      --ring: 210 60% 50%;
+
+      --ok: 142 55% 38%;
+      --warn: 32 95% 44%;
+      --danger: 2 68% 48%;
+
+      --radius: 1.25rem;
+      --shadow: 0 4px 30px hsl(220 40% 50% / 0.08);
+    }
+    html.liquid-glass body {
+      background: linear-gradient(135deg, hsl(210 40% 88%), hsl(260 30% 90%), hsl(320 20% 92%));
+      background-attachment: fixed;
+    }
+    html.liquid-glass .card {
+      background: hsla(var(--card));
+      border: 1px solid hsla(var(--border));
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      box-shadow: var(--shadow), inset 0 1px 0 hsl(0 0% 100% / 0.4);
+    }
+    html.liquid-glass .card > .card-head {
+      border-bottom-color: hsl(0 0% 100% / 0.3);
+    }
+    html.liquid-glass .btn {
+      background: hsl(0 0% 100% / 0.4);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-color: hsl(0 0% 100% / 0.5);
+    }
+    html.liquid-glass .btn:hover {
+      background: hsl(0 0% 100% / 0.6);
+    }
+    html.liquid-glass header.top {
+      background: hsl(0 0% 100% / 0.3);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
@@ -970,7 +1025,7 @@
 
       const out = {
         version: STATE_VERSION,
-        theme: ["system", "light", "dark"].includes(s.theme) ? s.theme : "system",
+        theme: ["system", "light", "dark", "glass"].includes(s.theme) ? s.theme : "system",
         gridColumns: s.gridColumns === "auto" ? "auto" : clampInt(s.gridColumns, 2, 5, CONFIG.gridColumns),
 
         applets: {
@@ -1132,19 +1187,22 @@
     // ======================================================================
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     function effectiveTheme() {
+      if (state.theme === "glass") return "light";
       return state.theme === "system" ? (mql.matches ? "dark" : "light") : state.theme;
     }
     function applyTheme() {
       const t = effectiveTheme();
       document.documentElement.classList.toggle("dark", t === "dark");
-      document.documentElement.setAttribute("data-theme", t);
+      document.documentElement.classList.toggle("liquid-glass", state.theme === "glass");
+      document.documentElement.setAttribute("data-theme", state.theme === "glass" ? "glass" : t);
       const b = $("#btn-theme");
-      b.textContent = state.theme === "system" ? "🌓" : (t === "dark" ? "🌙" : "☀️");
+      const icons = { system: "🌓", light: "☀️", dark: "🌙", glass: "💎" };
+      b.textContent = icons[state.theme] || "🌓";
       b.title = "Theme: " + state.theme + " (click to change)";
     }
     mql.addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
     $("#btn-theme").addEventListener("click", () => {
-      const order = ["system", "light", "dark"];
+      const order = ["system", "light", "dark", "glass"];
       mutate(s => { s.theme = order[(order.indexOf(s.theme) + 1) % order.length]; }, { render: false });
       applyTheme();
     });
