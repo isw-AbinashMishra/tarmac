@@ -39,7 +39,7 @@ Open `index.html` in Chrome. That's it.
 
 ## Applets
 
-Twelve cards, all pure local state:
+Fifteen cards, all pure local state:
 
 | id          | Applet                     | Notes                                                            |
 | ----------- | -------------------------- | --------------------------------------------------------------- |
@@ -48,6 +48,8 @@ Twelve cards, all pure local state:
 | `quota`     | Monthly quota burn-down    | `{label, monthlyLimit, used, resetDay}`; pace = used% vs elapsed%.|
 | `deepwork`  | Deep-work timer            | Pomodoro (default 50/10). Counts focus blocks + interruptions per day. |
 | `tally`     | Meeting / focus tally      | Two ± counters in 0.5 steps, ratio, rolling 7-day sparkline.     |
+| `water`     | Water                      | Daily glass target (editable via ⚙️); click **+ Glass** to log one, fill bar + toast on hitting the goal. Count resets daily. |
+| `walks`     | Walk breaks                | ± counter for short walk breaks taken today, rolling 7-day sparkline. Count resets daily. |
 | `capacity`  | Working-day capacity split | `{hours, daysPerWeek, items:[{label, pct}]}`; donut pie + per-slice time **per day and per week** (e.g. 10% of an 8h day = 48m/day → 4h/week); flags over/under-allocation. Set day length + days/week via the “Day length” button. |
 | `todo`      | To-do list                 | Add/complete/delete, drag-to-reorder, optional due date, open badge. |
 | `standup`   | Standup notes buffer       | Free text per day, day-picker for history, "Copy as standup".    |
@@ -55,6 +57,7 @@ Twelve cards, all pure local state:
 | `bookmarks` | Bookmarks                  | Grouped links with optional emoji/icon; editable in-app + config.|
 | `snippets`  | Snippet / command stash    | `{label, snippet, tag}`; click-to-copy, text filter.            |
 | `decisions` | Decision log (light ADR)   | `{date, decision, why}`; newest first, searchable.              |
+| `quotes`    | Dev quote of the day       | Static offline set of programming quotes; one shown per day (deterministic, no network call). |
 
 ---
 
@@ -69,14 +72,15 @@ Twelve cards, all pure local state:
 - **Storage-quota guard:** if a save fails (storage full/blocked), you get a
   non-blocking toast and your in-memory state is preserved until you close the tab.
 - **No telemetry, no external calls** except opening bookmark links. If offline,
-  everything still works (no CDN dependency).
+  everything still works (no CDN dependency). The quote-of-the-day is a static bundled
+  list, not a live API call, for the same reason.
 
 ### Day-scoped data
 
-Standup notes, deep-work counts, the meeting/focus tally, and the workday start time are stored per day under
-`state.daily["YYYY-MM-DD"].<applet>`. Today's key is computed on load and every second,
-so buffers **roll over automatically at local midnight**. Past days are kept for history
-and pruned after **30 days**.
+Standup notes, deep-work counts, the meeting/focus tally, the workday start time, and the
+water/walk-break counts are stored per day under `state.daily["YYYY-MM-DD"].<applet>`.
+Today's key is computed on load and every second, so buffers **roll over automatically at
+local midnight**. Past days are kept for history and pruned after **30 days**.
 
 ---
 
@@ -95,8 +99,8 @@ Also config-driven via `state.applets`:
 
 ```js
 applets: {
-  order:    ["clock", "workday", "quota", "deepwork", "tally", "capacity", "todo",
-             "standup", "blockers", "bookmarks", "snippets", "decisions"],
+  order:    ["clock", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity",
+             "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"],
   disabled: []            // e.g. ["decisions"] to hide the decision log
 }
 ```
