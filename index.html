@@ -182,7 +182,7 @@
     h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 
     /* --- layout ------------------------------------------------------------ */
-    .wrap { margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
+    .wrap { max-width: 1800px; margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
 
     header.top {
       display: flex; align-items: center; gap: 12px;
@@ -203,8 +203,14 @@
     }
     .card--wide { grid-column: span 2; }
     .card--superwide { grid-column: span 3; }
-    @media (max-width: 1060px) { .card--superwide { grid-column: span 2; } }
-    @media (max-width: 720px)  { .card--wide, .card--superwide { grid-column: span 1; } }
+    .card--span2 { grid-column: span 2; }
+    .card--span3 { grid-column: span 3; }
+    .card--span4 { grid-column: span 4; }
+    .card--span5 { grid-column: span 5; }
+    @media (max-width: 1060px) { .card--superwide, .card--span3, .card--span4, .card--span5 { grid-column: span 2; } }
+    @media (max-width: 720px)  { .card--wide, .card--superwide, .card--span2, .card--span3, .card--span4, .card--span5 { grid-column: span 1; } }
+    .card .btn-resize { opacity: 0.4; font-size: 0.75rem; transition: opacity .15s; }
+    .card .btn-resize:hover { opacity: 1; }
     .grid--auto-cols { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 
     /* Arrange mode: drag cards to reorder (toggled by #btn-arrange). */
@@ -969,7 +975,8 @@
 
         applets: {
           order: Array.isArray(ap.order) ? ap.order.map(String) : CONFIG.applets.order.slice(),
-          disabled: Array.isArray(ap.disabled) ? ap.disabled.map(String) : []
+          disabled: Array.isArray(ap.disabled) ? ap.disabled.map(String) : [],
+          sizes: (ap.sizes && typeof ap.sizes === "object" && !Array.isArray(ap.sizes)) ? ap.sizes : {}
         },
 
         bookmarkGroups: Array.isArray(s.bookmarkGroups) ? s.bookmarkGroups.map(g => ({
@@ -1218,9 +1225,15 @@
 
     function registerApplet(def) { APPLETS[def.id] = def; }
 
+    function cardSpanClass(id, def) {
+      const userSize = state.applets.sizes && state.applets.sizes[id];
+      if (userSize && userSize > 1) return " card--span" + userSize;
+      if (def.superwide) return " card--superwide";
+      if (def.wide) return " card--wide";
+      return "";
+    }
     function buildCard(def) {
-      const card = el("section", "card" +
-        (def.superwide ? " card--superwide" : def.wide ? " card--wide" : ""));
+      const card = el("section", "card" + cardSpanClass(def.id, def));
       card.dataset.applet = def.id;
       card.setAttribute("aria-label", def.title);
       card.innerHTML =
@@ -1229,6 +1242,7 @@
            <span class="sub" data-sub></span>
            <div class="spacer"></div>
            <div data-head></div>
+           <button class="btn btn--ghost btn--sm btn-resize" data-act="resize" title="Resize card (cycle column span)">↔</button>
          </div>
          <div class="card-body" data-body></div>`;
       return card;
@@ -1264,6 +1278,25 @@
         mounted.set(id, { def, card });
       });
     }
+    // Delegated resize handler (on persistent #grid, outside renderGrid)
+    grid.addEventListener("click", e => {
+      const btn = e.target.closest("[data-act=resize]");
+      if (!btn) return;
+      const card = btn.closest(".card");
+      const id = card && card.dataset.applet;
+      if (!id) return;
+      const maxCols = state.gridColumns === "auto" ? 5 : Number(state.gridColumns) || 3;
+      const cur = (state.applets.sizes && state.applets.sizes[id]) || 1;
+      const next = cur >= maxCols ? 1 : cur + 1;
+      mutate(s => {
+        if (!s.applets.sizes) s.applets.sizes = {};
+        if (next === 1) delete s.applets.sizes[id];
+        else s.applets.sizes[id] = next;
+      }, { render: false });
+      // Update card class without full re-render
+      card.className = card.className.replace(/ card--span\d| card--wide| card--superwide/g, "");
+      if (next > 1) card.classList.add("card--span" + next);
+    });
     function renderApplets() { mounted.forEach(m => m.def.render && m.def.render(m.card)); }
     function renderApplet(id) { const m = mounted.get(id); if (m && m.def.render) m.def.render(m.card); }
 
