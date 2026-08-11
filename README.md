@@ -39,11 +39,12 @@ Open `index.html` in Chrome. That's it.
 
 ## Applets
 
-Fifteen cards, all pure local state:
+Sixteen cards, all pure local state:
 
 | id          | Applet                     | Notes                                                            |
 | ----------- | -------------------------- | --------------------------------------------------------------- |
 | `clock`     | Clock + date               | Live time, full date, days remaining in the calendar month.     |
+| `calendar`  | Calendar                   | Month-view grid with prev/next/Today nav; today highlighted. View is transient (not persisted). |
 | `workday`   | Time left today            | Click "Start day" (or type a start time) → live countdown to end of day, using the Capacity applet's day length. |
 | `quota`     | Monthly quota burn-down    | `{label, monthlyLimit, used, resetDay}`; pace = used% vs elapsed%.|
 | `deepwork`  | Deep-work timer            | Pomodoro (default 50/10). Counts focus blocks + interruptions per day. |
@@ -99,7 +100,7 @@ Also config-driven via `state.applets`:
 
 ```js
 applets: {
-  order:    ["clock", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity",
+  order:    ["clock", "calendar", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity",
              "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"],
   disabled: []            // e.g. ["decisions"] to hide the decision log
 }

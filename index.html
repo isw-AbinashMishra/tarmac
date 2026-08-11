@@ -512,6 +512,14 @@
     .spark-legend { display: flex; gap: 12px; justify-content: center; font-size: 11px;
       color: hsl(var(--muted-foreground)); margin-top: 8px; }
     .spark-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+    .cal-nav { display: flex; align-items: center; gap: 4px; }
+    .cal-nav .cal-label { font-size: 13px; font-weight: 600; min-width: 108px; text-align: center; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .cal-dow { text-align: center; font-size: 11px; color: hsl(var(--muted-foreground)); padding: 2px 0; }
+    .cal-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; border-radius: var(--radius); }
+    .cal-cell.other { color: hsl(var(--muted-foreground)); opacity: .45; }
+    .cal-cell.today { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 700; }
 
     /* --- dev quote of the day ------------------------------------------------ */
     .quote-text { font-size: 16px; line-height: 1.5; font-style: italic; margin: 4px 0 10px 0; }
@@ -729,8 +737,8 @@
     //    Boot + timers          grep  Boot + timers
     //
     //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
-    //    ids: clock quota todo deepwork tally capacity workday standup blockers snippets decisions
-    //         bookmarks water walks quotes
+    //    ids: clock calendar quota todo deepwork tally capacity workday standup blockers snippets
+    //         decisions bookmarks water walks quotes
     //  Applet-specific helpers (grep the function name):
     //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag
     //    deepwork:  timerStart/Pause/Reset/Complete       workday: formatHMS
@@ -757,7 +765,7 @@
       // Which applets are shown, and in what order (top-to-bottom).
       applets: {
         order: [
-          "clock", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo",
+          "clock", "calendar", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo",
           "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"
         ],
         disabled: []   // e.g. ["decisions"] to hide the decision log
@@ -1465,6 +1473,63 @@
           </div>`;
       },
       tick(card) { this.render(card); }
+    });
+
+    // ---- Applet: Calendar -------------------------------------------------
+    // Pure month-view nav; the viewed month is transient UI state (kept on the
+    // card element itself), not persisted — always reopens on the current month.
+    registerApplet({
+      id: "calendar", title: "Calendar",
+      mount(card) {
+        const { head, body } = parts(card);
+        const now = new Date();
+        card.dataset.calY = now.getFullYear();
+        card.dataset.calM = now.getMonth();
+        head.innerHTML = `
+          <div class="cal-nav">
+            <button class="btn btn--ghost btn--sm btn--icon" data-act="prev" title="Previous month">◀</button>
+            <span class="cal-label" data-cal-label></span>
+            <button class="btn btn--ghost btn--sm btn--icon" data-act="next" title="Next month">▶</button>
+            <button class="btn btn--ghost btn--sm" data-act="today" title="Jump to today">Today</button>
+          </div>`;
+        body.innerHTML = `<div class="cal-grid" data-cal-grid></div>`;
+        head.addEventListener("click", e => {
+          const btn = e.target.closest("[data-act]"); if (!btn) return;
+          let y = +card.dataset.calY, m = +card.dataset.calM;
+          if (btn.dataset.act === "prev") { m -= 1; if (m < 0) { m = 11; y -= 1; } }
+          else if (btn.dataset.act === "next") { m += 1; if (m > 11) { m = 0; y += 1; } }
+          else if (btn.dataset.act === "today") { const t = new Date(); y = t.getFullYear(); m = t.getMonth(); }
+          card.dataset.calY = y; card.dataset.calM = m;
+          this.render(card);
+        });
+      },
+      render(card) {
+        const y = +card.dataset.calY, m = +card.dataset.calM;
+        const label = card.querySelector("[data-cal-label]");
+        const grid = card.querySelector("[data-cal-grid]");
+        const first = new Date(y, m, 1);
+        label.textContent = first.toLocaleDateString([], { month: "long", year: "numeric" });
+
+        const dows = ["S", "M", "T", "W", "T", "F", "S"];
+        const leading = first.getDay(); // days from the previous month to fill the first week
+        const total = daysInMonthOf(y, m);
+        const prevTotal = daysInMonthOf(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+        const todayStr = todayKey();
+
+        let cells = dows.map(d => `<div class="cal-dow">${d}</div>`).join("");
+        for (let i = leading - 1; i >= 0; i--) {
+          cells += `<div class="cal-cell other">${prevTotal - i}</div>`;
+        }
+        for (let d = 1; d <= total; d++) {
+          const isToday = dateKey(new Date(y, m, d)) === todayStr;
+          cells += `<div class="cal-cell${isToday ? " today" : ""}">${d}</div>`;
+        }
+        const trailing = (7 - ((leading + total) % 7)) % 7;
+        for (let d = 1; d <= trailing; d++) {
+          cells += `<div class="cal-cell other">${d}</div>`;
+        }
+        grid.innerHTML = cells;
+      }
     });
 
     // ---- Applet: Quota burn-down ----------------------------------------
