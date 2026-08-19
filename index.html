@@ -39,7 +39,7 @@
      ],
 
      // ── Applet: todo ────────────────────────────────────────────────────
-     todos: [ { id, text, done, due? } ],   // array order IS display order
+     todos: [ { id, text, done, due?, group? } ],   // array order IS display order
 
      // ── Applet: quota ───────────────────────────────────────────────────
      quotas: [
@@ -54,6 +54,9 @@
 
      // ── Applet: decisions (lightweight ADR log) ─────────────────────────
      decisions: [ { id, date, decision, why } ],   // date = "YYYY-MM-DD"
+
+     // ── Applet: inprogress (long-running work items + confidence level) ──
+     inprogress: [ { id, title, level, notes } ],   // level = 1..5; retired = deleted
 
      // ── Applet: snippets (command stash) ────────────────────────────────
      snippets: [ { id, label, snippet, tag } ],
@@ -139,6 +142,12 @@
       --warn: 32 95% 44%;
       --danger: 2 68% 48%;
 
+      --conf-1: 0 70% 46%;
+      --conf-2: 26 85% 46%;
+      --conf-3: 42 90% 40%;
+      --conf-4: 90 45% 36%;
+      --conf-5: 142 55% 34%;
+
       --radius: 0.75rem;
       --shadow: 0 1px 3px hsl(256 18% 22% / 0.07);
     }
@@ -160,6 +169,12 @@
       --ok: 142 45% 58%;
       --warn: 36 90% 62%;
       --danger: 4 75% 70%;
+
+      --conf-1: 4 75% 64%;
+      --conf-2: 28 85% 60%;
+      --conf-3: 45 85% 56%;
+      --conf-4: 90 45% 54%;
+      --conf-5: 142 45% 52%;
 
       --shadow: 0 1px 2px hsl(0 0% 0% / 0.4);
     }
@@ -183,6 +198,12 @@
       --ok: 142 55% 38%;
       --warn: 32 95% 44%;
       --danger: 2 68% 48%;
+
+      --conf-1: 0 70% 46%;
+      --conf-2: 26 85% 46%;
+      --conf-3: 42 90% 40%;
+      --conf-4: 90 45% 36%;
+      --conf-5: 142 55% 34%;
 
       --radius: 1.25rem;
       --shadow: 0 4px 30px hsl(220 40% 50% / 0.08);
@@ -399,6 +420,8 @@
     .todo-add { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .todo-add .input:first-child { flex: 1; min-width: 140px; }
     ul.todos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .todo-scroll { max-height: 360px; overflow-y: auto; padding-right: 2px; }
+    dialog .todo-scroll { max-height: none; }
     li.todo {
       display: flex; align-items: center; gap: 8px;
       padding: 8px; border: 1px solid hsl(var(--border));
@@ -408,15 +431,23 @@
     li.todo.dragging { opacity: .4; }
     li.todo.drop-before { box-shadow: 0 -2px 0 0 hsl(var(--ring)); }
     li.todo.drop-after { box-shadow: 0 2px 0 0 hsl(var(--ring)); }
+    li.todo:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
     li.todo .handle { cursor: grab; color: hsl(var(--muted-foreground));
       padding: 2px 4px; user-select: none; }
     li.todo .handle:active { cursor: grabbing; }
-    li.todo .txt { flex: 1; min-width: 0; word-break: break-word; }
+    li.todo .txt { flex: 1; min-width: 0; word-break: break-word; cursor: text; }
     li.todo.done .txt { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
     li.todo input[type=checkbox] { width: 16px; height: 16px; accent-color: hsl(var(--primary)); }
     .due { font-size: 11px; }
     .due.overdue { color: hsl(var(--danger)); }
     .todo-actions { display: flex; gap: 2px; }
+    li.todo-group-header {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+      color: hsl(var(--muted-foreground)); padding: 6px 2px 0; border: none; background: none;
+    }
+    li.todo-group-header:first-child { padding-top: 0; }
+    .badge.group { font-size: 11px; color: hsl(var(--muted-foreground)); }
+    dialog.todo-expand { width: min(640px, calc(100vw - 32px)); }
 
     /* --- quota ------------------------------------------------------------- */
     .quota { padding: 12px 0; border-bottom: 1px solid hsl(var(--border)); }
@@ -446,6 +477,33 @@
     .clock .date { color: hsl(var(--muted-foreground)); font-size: 15px; }
     .month-left { margin-top: 12px; }
     .month-left .bar { margin-top: 8px; }
+
+    /* --- confidence (inprogress): 5-step red→green gradient, level 1..5 --- */
+    li.item.conf-1 { border-left: 4px solid hsl(var(--conf-1)); }
+    li.item.conf-2 { border-left: 4px solid hsl(var(--conf-2)); }
+    li.item.conf-3 { border-left: 4px solid hsl(var(--conf-3)); }
+    li.item.conf-4 { border-left: 4px solid hsl(var(--conf-4)); }
+    li.item.conf-5 { border-left: 4px solid hsl(var(--conf-5)); }
+    .conf-badge {
+      display: inline-flex; align-items: center; padding: 2px 9px;
+      border-radius: 999px; font-size: 11px; font-weight: 700;
+      letter-spacing: .02em; color: #fff; white-space: nowrap;
+    }
+    .conf-1 .conf-badge { background: hsl(var(--conf-1)); }
+    .conf-2 .conf-badge { background: hsl(var(--conf-2)); }
+    .conf-3 .conf-badge { background: hsl(var(--conf-3)); }
+    .conf-4 .conf-badge { background: hsl(var(--conf-4)); }
+    .conf-5 .conf-badge { background: hsl(var(--conf-5)); }
+    .conf-bar { display: flex; gap: 3px; margin-top: 6px; }
+    .conf-bar .seg {
+      flex: 1; height: 9px; border-radius: 3px; padding: 0; border: none;
+      cursor: pointer; background: hsl(var(--border));
+    }
+    .conf-1 .conf-bar .seg.filled { background: hsl(var(--conf-1)); }
+    .conf-2 .conf-bar .seg.filled { background: hsl(var(--conf-2)); }
+    .conf-3 .conf-bar .seg.filled { background: hsl(var(--conf-3)); }
+    .conf-4 .conf-bar .seg.filled { background: hsl(var(--conf-4)); }
+    .conf-5 .conf-bar .seg.filled { background: hsl(var(--conf-5)); }
 
     /* --- generic list (blockers / decisions / snippets) -------------------- */
     .filter-row { margin-bottom: 12px; }
@@ -706,6 +764,17 @@
     </form>
   </dialog>
 
+  <!-- To-do expanded view: same list, roomier, for long lists ------------- -->
+  <dialog id="todo-dlg" class="todo-expand">
+    <div class="dlg-head"><h3>To-do &mdash; full list</h3></div>
+    <div class="dlg-body">
+      <ul class="todos todo-scroll" data-todo-modal-list></ul>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="todo-dlg-close">Close</button>
+    </div>
+  </dialog>
+
   <div class="toast-wrap" id="toasts" aria-live="polite"></div>
 
   <script>
@@ -719,7 +788,7 @@
     //    <head><style>  design tokens + component CSS   → grep a class (".timer",
     //                   ".bm-tile", ".quota", ".spark7", ".toast")
     //    <body>         header toolbar, <main id="grid">, README <details>,
-    //                   <dialog id="dlg">, <div id="toasts">
+    //                   <dialog id="dlg">, <dialog id="todo-dlg">, <div id="toasts">
     //    <script>       everything below, in this order:
     //
     //  JS sections (grep the quoted anchor to jump straight there):
@@ -738,12 +807,13 @@
     //
     //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
     //    ids: clock calendar quota todo deepwork tally capacity workday standup blockers snippets
-    //         decisions bookmarks water walks quotes
+    //         decisions inprogress bookmarks water walks quotes
     //  Applet-specific helpers (grep the function name):
-    //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag
+    //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag editTodo openTodoModal
     //    deepwork:  timerStart/Pause/Reset/Complete       workday: formatHMS
     //    standup:   openStandupCopy               snippets:  editSnippet
     //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
+    //    inprogress: editInProgress
     //    quotes:    quoteOfDay hashStr
     //
     //  See CLAUDE.md for the applet contract, invariants, and how to add one.
@@ -766,7 +836,7 @@
       applets: {
         order: [
           "clock", "calendar", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo",
-          "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"
+          "standup", "blockers", "bookmarks", "snippets", "decisions", "inprogress", "quotes"
         ],
         disabled: []   // e.g. ["decisions"] to hide the decision log
       },
@@ -814,6 +884,9 @@
         { decision: "Keep tarmac a single static file", why: "No build step; works from file:// as a Chrome homepage." }
       ],
 
+      // ── Applet: inprogress (things you're validating, with a confidence level) ──
+      inprogress: [],
+
       // ── Applet: capacity (split your working day across areas, by %) ────
       capacity: {
         hours: 9,               // length of a working day, in hours
@@ -833,7 +906,7 @@
     };
 
     const STORAGE_KEY = "tarmac:state";
-    const STATE_VERSION = 6;
+    const STATE_VERSION = 8;
     const DAILY_KEEP_DAYS = 30;
 
     // ======================================================================
@@ -1051,7 +1124,8 @@
         })) : [],
 
         todos: Array.isArray(s.todos) ? s.todos.map(t => ({
-          id: t.id || uid(), text: String(t.text || ""), done: !!t.done, due: String(t.due || "")
+          id: t.id || uid(), text: String(t.text || ""), done: !!t.done, due: String(t.due || ""),
+          group: String(t.group || "")
         })) : [],
 
         quotas: Array.isArray(s.quotas) ? s.quotas.map(normalizeQuota) : [],
@@ -1066,6 +1140,11 @@
         decisions: Array.isArray(s.decisions) ? s.decisions.map(d => ({
           id: d.id || uid(), date: String(d.date || todayKey()),
           decision: String(d.decision || ""), why: String(d.why || "")
+        })) : [],
+
+        inprogress: Array.isArray(s.inprogress) ? s.inprogress.map(p => ({
+          id: p.id || uid(), title: String(p.title || ""),
+          level: clampInt(p.level, 1, 5, 3), notes: String(p.notes || "")
         })) : [],
 
         snippets: Array.isArray(s.snippets) ? s.snippets.map(x => ({
@@ -1128,6 +1207,7 @@
         blockers: CONFIG.blockers,
         snippets: CONFIG.snippets,
         decisions: CONFIG.decisions,
+        inprogress: CONFIG.inprogress,
         deepwork: CONFIG.deepwork,
         daily: {}
       });
@@ -1293,7 +1373,7 @@
 
     function cardSpanClass(id, def) {
       const userSize = state.applets.sizes && state.applets.sizes[id];
-      if (userSize && userSize > 1) return " card--span" + userSize;
+      if (userSize) return userSize > 1 ? " card--span" + userSize : "";
       if (def.superwide) return " card--superwide";
       if (def.wide) return " card--wide";
       return "";
@@ -1352,12 +1432,13 @@
       const id = card && card.dataset.applet;
       if (!id) return;
       const maxCols = state.gridColumns === "auto" ? 5 : Number(state.gridColumns) || 3;
-      const cur = (state.applets.sizes && state.applets.sizes[id]) || 1;
+      const def = APPLETS[id];
+      const defaultSize = def.superwide ? 3 : (def.wide ? 2 : 1);
+      const cur = (state.applets.sizes && state.applets.sizes[id]) || defaultSize;
       const next = cur >= maxCols ? 1 : cur + 1;
       mutate(s => {
         if (!s.applets.sizes) s.applets.sizes = {};
-        if (next === 1) delete s.applets.sizes[id];
-        else s.applets.sizes[id] = next;
+        s.applets.sizes[id] = next;
       }, { render: false });
       // Update card class without full re-render
       card.className = card.className.replace(/ card--span\d| card--wide| card--superwide/g, "");
@@ -1620,63 +1701,120 @@
     registerApplet({
       id: "todo", title: "To-do", wide: true,
       mount(card) {
-        const { body } = parts(card);
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--ghost btn--sm btn--icon" data-act="expand" title="Expand to full-size view">⤢</button>`;
+        head.addEventListener("click", e => { if (e.target.closest("[data-act=expand]")) openTodoModal(); });
         body.innerHTML = `
           <form class="todo-add" data-form>
             <input class="input" id="todo-input" placeholder="Add a task and press Enter…" autocomplete="off" aria-label="New task" />
             <input class="input" id="todo-due" type="date" style="width:150px" aria-label="Due date (optional)" />
+            <input class="input" id="todo-group" list="todo-groups" style="width:130px" placeholder="Group (optional)" aria-label="Group (optional)" />
+            <datalist id="todo-groups"></datalist>
             <button class="btn btn--primary" type="submit">Add</button>
           </form>
-          <ul class="todos" data-list></ul>`;
+          <ul class="todos todo-scroll" data-list></ul>`;
         const list = body.querySelector("[data-list]");
 
         body.querySelector("[data-form]").addEventListener("submit", e => {
           e.preventDefault();
-          const input = body.querySelector("#todo-input"), dueEl = body.querySelector("#todo-due");
+          const input = body.querySelector("#todo-input"), dueEl = body.querySelector("#todo-due"), groupEl = body.querySelector("#todo-group");
           const text = input.value.trim(); if (!text) return;
-          const due = dueEl.value || "";
-          mutate(s => { s.todos.push({ id: uid(), text, done: false, due }); }, { only: ["todo"] });
-          input.value = ""; dueEl.value = ""; input.focus();
+          const due = dueEl.value || "", group = groupEl.value.trim();
+          mutate(s => { s.todos.push({ id: uid(), text, done: false, due, group }); }, { only: ["todo"] });
+          input.value = ""; dueEl.value = ""; groupEl.value = ""; input.focus();
         });
-        list.addEventListener("click", e => {
-          const li = e.target.closest("li.todo"); if (!li) return;
-          const idx = state.todos.findIndex(t => t.id === li.dataset.id); if (idx < 0) return;
-          if (e.target.closest("[data-act=del]")) mutate(s => { s.todos.splice(idx, 1); }, { only: ["todo"] });
-          else if (e.target.closest("[data-act=up]")) moveTodo(idx, idx - 1);
-          else if (e.target.closest("[data-act=down]")) moveTodo(idx, idx + 1);
-        });
-        list.addEventListener("change", e => {
-          if (!e.target.matches("input[type=checkbox]")) return;
-          const li = e.target.closest("li.todo"); const id = li && li.dataset.id;
-          mutate(s => { const t = s.todos.find(x => x.id === id); if (t) t.done = e.target.checked; }, { only: ["todo"] });
-        });
+        wireTodoListEvents(list);
         wireTodoDrag(list);
       },
       render(card) {
         const { sub, body } = parts(card);
-        const list = body.querySelector("[data-list]");
         const open = state.todos.filter(t => !t.done).length;
         sub.textContent = `${open} open`;
-        if (!state.todos.length) { list.innerHTML = `<li class="empty">Nothing here yet — add a task above.</li>`; return; }
-        const today = todayKey();
-        list.innerHTML = state.todos.map((t, i) => {
-          const overdue = t.due && !t.done && t.due < today;
-          const dueLabel = t.due ? `<span class="due badge ${overdue ? "overdue badge--danger" : ""}">${escapeHtml(formatDue(t.due))}</span>` : "";
-          return `
-            <li class="todo ${t.done ? "done" : ""}" draggable="true" data-id="${t.id}">
-              <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
-              <input type="checkbox" ${t.done ? "checked" : ""} aria-label="Complete" />
-              <span class="txt">${escapeHtml(t.text)}</span>
-              ${dueLabel}
-              <span class="todo-actions">
-                <button class="btn btn--ghost btn--sm btn--icon" data-act="up" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
-                <button class="btn btn--ghost btn--sm btn--icon" data-act="down" title="Move down" ${i === state.todos.length - 1 ? "disabled" : ""}>↓</button>
-                <button class="btn btn--ghost btn--sm btn--icon btn--danger" data-act="del" title="Delete">✕</button>
-              </span>
-            </li>`;
-        }).join("");
+        body.querySelector("[data-list]").innerHTML = todoListHtml();
+        const groups = [...new Set(state.todos.map(t => t.group).filter(Boolean))];
+        body.querySelector("#todo-groups").innerHTML = groups.map(g => `<option value="${escapeHtml(g)}">`).join("");
+        renderTodoModal();
       }
     });
+    // Shared list markup for both the card body and the expanded modal.
+    // Groups are shown as a header whenever the group differs from the item
+    // above it — order (and drag/up/down) is always the real state.todos order.
+    function todoListHtml() {
+      if (!state.todos.length) return `<li class="empty">Nothing here yet — add a task above.</li>`;
+      const today = todayKey();
+      return state.todos.map((t, i) => {
+        const overdue = t.due && !t.done && t.due < today;
+        const dueLabel = t.due ? `<span class="due badge ${overdue ? "overdue badge--danger" : ""}">${escapeHtml(formatDue(t.due))}</span>` : "";
+        const groupLabel = t.group ? `<span class="badge group">${escapeHtml(t.group)}</span>` : "";
+        const prevGroup = i > 0 ? state.todos[i - 1].group : null;
+        const header = (t.group && t.group !== prevGroup) ? `<li class="todo-group-header">${escapeHtml(t.group)}</li>` : "";
+        return header + `
+          <li class="todo ${t.done ? "done" : ""}" draggable="true" tabindex="0" data-id="${t.id}">
+            <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+            <input type="checkbox" ${t.done ? "checked" : ""} aria-label="Complete" />
+            <span class="txt" data-act="edit" title="Click to edit">${escapeHtml(t.text)}</span>
+            ${groupLabel}
+            ${dueLabel}
+            <span class="todo-actions">
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="up" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="down" title="Move down" ${i === state.todos.length - 1 ? "disabled" : ""}>↓</button>
+              <button class="btn btn--ghost btn--sm btn--icon btn--danger" data-act="del" title="Delete">✕</button>
+            </span>
+          </li>`;
+      }).join("");
+    }
+    // Click / checkbox / keyboard handling, delegated so it works for any list
+    // element (card body list or the expanded-modal list) built from todoListHtml().
+    function wireTodoListEvents(list) {
+      list.addEventListener("click", e => {
+        const li = e.target.closest("li.todo"); if (!li) return;
+        const idx = state.todos.findIndex(t => t.id === li.dataset.id); if (idx < 0) return;
+        if (e.target.closest("[data-act=del]")) mutate(s => { s.todos.splice(idx, 1); }, { only: ["todo"] });
+        else if (e.target.closest("[data-act=up]")) moveTodo(idx, idx - 1);
+        else if (e.target.closest("[data-act=down]")) moveTodo(idx, idx + 1);
+        else if (e.target.closest("[data-act=edit]")) editTodo(state.todos[idx]);
+      });
+      list.addEventListener("change", e => {
+        if (!e.target.matches("input[type=checkbox]")) return;
+        const li = e.target.closest("li.todo"); const id = li && li.dataset.id;
+        mutate(s => { const t = s.todos.find(x => x.id === id); if (t) t.done = e.target.checked; }, { only: ["todo"] });
+      });
+      // Keyboard ops on a focused row: Space/Enter toggle, Delete removes,
+      // Alt+Arrow reorders. Focus is restored after mutate() re-renders the list.
+      list.addEventListener("keydown", e => {
+        const li = e.target.closest("li.todo"); if (!li || e.target !== li) return;
+        const idx = state.todos.findIndex(t => t.id === li.dataset.id); if (idx < 0) return;
+        const id = li.dataset.id;
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          mutate(s => { s.todos[idx].done = !s.todos[idx].done; }, { only: ["todo"] });
+          focusTodoRow(list, id);
+        } else if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          mutate(s => { s.todos.splice(idx, 1); }, { only: ["todo"] });
+        } else if (e.altKey && e.key === "ArrowUp") {
+          e.preventDefault(); moveTodo(idx, idx - 1); focusTodoRow(list, id);
+        } else if (e.altKey && e.key === "ArrowDown") {
+          e.preventDefault(); moveTodo(idx, idx + 1); focusTodoRow(list, id);
+        }
+      });
+    }
+    function focusTodoRow(list, id) {
+      const li = list.querySelector(`li.todo[data-id="${CSS.escape(id)}"]`);
+      if (li) li.focus();
+    }
+    async function editTodo(t) {
+      const vals = await openDialog("Edit task", [
+        { key: "text", label: "Task", value: t.text },
+        { key: "due", label: "Due date (optional)", type: "date", value: t.due || "" },
+        { key: "group", label: "Group (optional)", value: t.group || "", placeholder: "e.g. Work" }
+      ], "Save");
+      if (!vals || !vals.text.trim()) return;
+      mutate(s => {
+        const x = s.todos.find(o => o.id === t.id);
+        if (x) { x.text = vals.text.trim(); x.due = vals.due || ""; x.group = vals.group.trim(); }
+      }, { only: ["todo"] });
+    }
     function moveTodo(from, to) {
       if (to < 0 || to >= state.todos.length) return;
       mutate(s => { const [item] = s.todos.splice(from, 1); s.todos.splice(to, 0, item); }, { only: ["todo"] });
@@ -1713,6 +1851,14 @@
         moveTodo(from, to);
       });
     }
+    // Expanded modal: same list/events, roomier for long lists (card body caps at 360px).
+    const todoDlg = $("#todo-dlg");
+    const todoModalList = $("[data-todo-modal-list]");
+    function openTodoModal() { todoModalList.innerHTML = todoListHtml(); todoDlg.showModal(); }
+    function renderTodoModal() { if (todoDlg.open) todoModalList.innerHTML = todoListHtml(); }
+    wireTodoListEvents(todoModalList);
+    wireTodoDrag(todoModalList);
+    $("#todo-dlg-close").addEventListener("click", () => todoDlg.close());
 
     // ---- Applet: Deep-work timer ----------------------------------------
     // Timer runtime is transient (ui.timer); only per-day counts persist.
@@ -2074,6 +2220,69 @@
       ], "Add");
       if (!vals || !vals.decision.trim()) return;
       mutate(s => { s.decisions.push({ id: uid(), date: vals.date || todayKey(), decision: vals.decision.trim(), why: vals.why.trim() }); }, { only: ["decisions"] });
+    }
+
+    // ---- Applet: In progress (long-running work items + confidence) -----
+    // Not day-scoped: items live until manually deleted (there's no "retire"
+    // state — when it's done, remove it).
+    const CONFIDENCE_LABELS = { 1: "At risk", 2: "Lagging", 3: "As expected", 4: "Ahead", 5: "On top of it" };
+    registerApplet({
+      id: "inprogress", title: "In progress", wide: false,
+      mount(card) {
+        const { head, body } = parts(card);
+        head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => { if (e.target.closest("[data-act=add]")) editInProgress(null); });
+        body.innerHTML = `<div data-list></div>`;
+        body.querySelector("[data-list]").addEventListener("click", e => {
+          const li = e.target.closest("li.item"); if (!li) return;
+          const it = state.inprogress.find(x => x.id === li.dataset.id); if (!it) return;
+          const seg = e.target.closest("[data-seg]");
+          if (seg) {
+            const level = Number(seg.dataset.seg);
+            mutate(s => { const x = s.inprogress.find(o => o.id === it.id); if (x) x.level = level; }, { only: ["inprogress"] });
+          } else if (e.target.closest("[data-act=edit]")) editInProgress(it);
+          else if (e.target.closest("[data-act=del]") && confirm(`Delete “${it.title || "this item"}”?`))
+            mutate(s => { s.inprogress = s.inprogress.filter(x => x.id !== it.id); }, { only: ["inprogress"] });
+        });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        sub.textContent = `${state.inprogress.length} tracked`;
+        const list = body.querySelector("[data-list]");
+        if (!state.inprogress.length) { list.innerHTML = `<p class="empty">Nothing in progress. Click “+ Add”.</p>`; return; }
+        list.innerHTML = `<ul class="list">` + state.inprogress.map(it => {
+          const label = CONFIDENCE_LABELS[it.level] || "";
+          return `
+          <li class="item conf-${it.level}" data-id="${it.id}">
+            <div class="item-head">
+              <span class="title">${escapeHtml(it.title || "Untitled")}</span>
+              <div class="spacer"></div>
+              <span class="conf-badge">${it.level}/5 · ${label}</span>
+              <button class="btn btn--ghost btn--sm btn--icon" data-act="edit" title="Edit">✏️</button>
+              <button class="btn btn--ghost btn--sm btn--icon btn--danger" data-act="del" title="Delete">🗑️</button>
+            </div>
+            <div class="conf-bar" role="group" aria-label="Confidence level, ${it.level} of 5 (${label})">
+              ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="seg ${n <= it.level ? "filled" : ""}" data-seg="${n}" title="Set confidence ${n}/5 — ${CONFIDENCE_LABELS[n]}"></button>`).join("")}
+            </div>
+            ${it.notes ? `<div class="body muted">${escapeHtml(it.notes)}</div>` : ""}
+          </li>`;
+        }).join("") + `</ul>`;
+      }
+    });
+    async function editInProgress(it) {
+      const isNew = !it; it = it || { level: 3 };
+      const vals = await openDialog(isNew ? "Add in-progress item" : "Edit item", [
+        { key: "title", label: "Title", value: it.title || "", placeholder: "e.g. Load-test payments API" },
+        { key: "notes", label: "Notes (optional)", type: "textarea", rows: 4, value: it.notes || "" }
+      ], isNew ? "Add" : "Save");
+      if (!vals || !vals.title.trim()) return;
+      mutate(s => {
+        if (isNew) s.inprogress.push({ id: uid(), title: vals.title.trim(), notes: vals.notes.trim(), level: 3 });
+        else {
+          const x = s.inprogress.find(o => o.id === it.id);
+          if (x) { x.title = vals.title.trim(); x.notes = vals.notes.trim(); }
+        }
+      }, { only: ["inprogress"] });
     }
 
     // ---- Applet: Bookmarks ----------------------------------------------

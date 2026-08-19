@@ -39,7 +39,7 @@ Open `index.html` in Chrome. That's it.
 
 ## Applets
 
-Sixteen cards, all pure local state:
+Seventeen cards, all pure local state:
 
 | id          | Applet                     | Notes                                                            |
 | ----------- | -------------------------- | --------------------------------------------------------------- |
@@ -58,6 +58,7 @@ Sixteen cards, all pure local state:
 | `bookmarks` | Bookmarks                  | Grouped links with optional emoji/icon; editable in-app + config.|
 | `snippets`  | Snippet / command stash    | `{label, snippet, tag}`; click-to-copy, text filter.            |
 | `decisions` | Decision log (light ADR)   | `{date, decision, why}`; newest first, searchable.              |
+| `inprogress`| In progress                | `{title, level, notes}`; long-running items you're validating — click a star to set confidence 1-5, delete when it's done (no separate "retire" state). |
 | `quotes`    | Dev quote of the day       | Static offline set of programming quotes; one shown per day (deterministic, no network call). |
 
 ---
@@ -101,7 +102,7 @@ Also config-driven via `state.applets`:
 ```js
 applets: {
   order:    ["clock", "calendar", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity",
-             "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "quotes"],
+             "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "inprogress", "quotes"],
   disabled: []            // e.g. ["decisions"] to hide the decision log
 }
 ```
