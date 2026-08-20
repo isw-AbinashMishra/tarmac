@@ -517,6 +517,11 @@
     li.item .title { font-weight: 500; word-break: break-word; }
     li.item .meta { font-size: 12px; color: hsl(var(--muted-foreground)); }
     li.item .body { margin-top: 4px; word-break: break-word; }
+    li.item .handle { cursor: grab; color: hsl(var(--muted-foreground)); padding: 2px 4px; user-select: none; }
+    li.item .handle:active { cursor: grabbing; }
+    li.item.dragging { opacity: .4; }
+    li.item.drop-before { box-shadow: 0 -2px 0 0 hsl(var(--ring)); }
+    li.item.drop-after { box-shadow: 0 2px 0 0 hsl(var(--ring)); }
 
     /* --- snippets ---------------------------------------------------------- */
     .snippet pre {
@@ -813,7 +818,7 @@
     //    deepwork:  timerStart/Pause/Reset/Complete       workday: formatHMS
     //    standup:   openStandupCopy               snippets:  editSnippet
     //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
-    //    inprogress: editInProgress
+    //    inprogress: editInProgress moveInProgress wireInProgressDrag
     //    quotes:    quoteOfDay hashStr
     //
     //  See CLAUDE.md for the applet contract, invariants, and how to add one.
@@ -2230,10 +2235,17 @@
       id: "inprogress", title: "In progress", wide: false,
       mount(card) {
         const { head, body } = parts(card);
-        head.innerHTML = `<button class="btn btn--sm" data-act="add">+ Add</button>`;
-        head.addEventListener("click", e => { if (e.target.closest("[data-act=add]")) editInProgress(null); });
-        body.innerHTML = `<div data-list></div>`;
-        body.querySelector("[data-list]").addEventListener("click", e => {
+        head.innerHTML = `
+          <button class="btn btn--ghost btn--sm" data-act="sort" title="Sort by confidence, lowest first">Sort</button>
+          <button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => {
+          if (e.target.closest("[data-act=add]")) editInProgress(null);
+          else if (e.target.closest("[data-act=sort]"))
+            mutate(s => { s.inprogress.sort((a, b) => a.level - b.level); }, { only: ["inprogress"] });
+        });
+        body.innerHTML = `<ul class="list" data-list></ul>`;
+        const list = body.querySelector("[data-list]");
+        list.addEventListener("click", e => {
           const li = e.target.closest("li.item"); if (!li) return;
           const it = state.inprogress.find(x => x.id === li.dataset.id); if (!it) return;
           const seg = e.target.closest("[data-seg]");
@@ -2244,17 +2256,19 @@
           else if (e.target.closest("[data-act=del]") && confirm(`Delete “${it.title || "this item"}”?`))
             mutate(s => { s.inprogress = s.inprogress.filter(x => x.id !== it.id); }, { only: ["inprogress"] });
         });
+        wireInProgressDrag(list);
       },
       render(card) {
         const { sub, body } = parts(card);
         sub.textContent = `${state.inprogress.length} tracked`;
         const list = body.querySelector("[data-list]");
-        if (!state.inprogress.length) { list.innerHTML = `<p class="empty">Nothing in progress. Click “+ Add”.</p>`; return; }
-        list.innerHTML = `<ul class="list">` + state.inprogress.map(it => {
+        if (!state.inprogress.length) { list.innerHTML = `<li class="empty">Nothing in progress. Click “+ Add”.</li>`; return; }
+        list.innerHTML = state.inprogress.map(it => {
           const label = CONFIDENCE_LABELS[it.level] || "";
           return `
-          <li class="item conf-${it.level}" data-id="${it.id}">
+          <li class="item conf-${it.level}" draggable="true" data-id="${it.id}">
             <div class="item-head">
+              <span class="handle" title="Drag to reorder" aria-hidden="true">⠿</span>
               <span class="title">${escapeHtml(it.title || "Untitled")}</span>
               <div class="spacer"></div>
               <span class="conf-badge">${it.level}/5 · ${label}</span>
@@ -2266,9 +2280,45 @@
             </div>
             ${it.notes ? `<div class="body muted">${escapeHtml(it.notes)}</div>` : ""}
           </li>`;
-        }).join("") + `</ul>`;
+        }).join("");
       }
     });
+    function moveInProgress(from, to) {
+      if (to < 0 || to >= state.inprogress.length) return;
+      mutate(s => { const [item] = s.inprogress.splice(from, 1); s.inprogress.splice(to, 0, item); }, { only: ["inprogress"] });
+    }
+    // HTML5 drag-and-drop reorder, same pattern as the todo list's wireTodoDrag.
+    function wireInProgressDrag(list) {
+      let dragId = null;
+      list.addEventListener("dragstart", e => {
+        const li = e.target.closest("li.item"); if (!li) return;
+        dragId = li.dataset.id; li.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", dragId); } catch (_) {}
+      });
+      list.addEventListener("dragend", () => {
+        dragId = null;
+        list.querySelectorAll("li.item").forEach(li => li.classList.remove("dragging", "drop-before", "drop-after"));
+      });
+      list.addEventListener("dragover", e => {
+        e.preventDefault();
+        const li = e.target.closest("li.item"); if (!li || li.dataset.id === dragId) return;
+        const before = (e.clientY - li.getBoundingClientRect().top) < li.offsetHeight / 2;
+        list.querySelectorAll("li.item").forEach(x => x.classList.remove("drop-before", "drop-after"));
+        li.classList.add(before ? "drop-before" : "drop-after");
+      });
+      list.addEventListener("drop", e => {
+        e.preventDefault();
+        const li = e.target.closest("li.item"); if (!li || !dragId) return;
+        const from = state.inprogress.findIndex(t => t.id === dragId);
+        let to = state.inprogress.findIndex(t => t.id === li.dataset.id);
+        if (from < 0 || to < 0 || from === to) return;
+        const before = (e.clientY - li.getBoundingClientRect().top) < li.offsetHeight / 2;
+        if (!before) to += 1;
+        if (from < to) to -= 1;
+        moveInProgress(from, to);
+      });
+    }
     async function editInProgress(it) {
       const isNew = !it; it = it || { level: 3 };
       const vals = await openDialog(isNew ? "Add in-progress item" : "Edit item", [
