@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>tasks · tarmac</title>
+<style>
+  /* ── Design tokens — mirrors tarmac's index.html palette so the two pages
+     feel like one app. Theme (light/dark/glass) is read from tarmac:state,
+     this page never writes to that key. ───────────────────────────────── */
+  :root {
+    --background: 265 20% 96.5%;
+    --foreground: 270 8% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 270 8% 12%;
+    --muted: 268 30% 96%;
+    --muted-foreground: 268 6% 42%;
+    --border: 268 18% 89%;
+    --input: 268 18% 84%;
+    --primary: 256 34% 48%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 256 48% 94%;
+    --accent-foreground: 256 40% 30%;
+    --ring: 256 34% 48%;
+    --ok: 142 55% 38%;
+    --warn: 32 95% 44%;
+    --danger: 2 68% 48%;
+    --radius: 0.75rem;
+    --shadow: 0 1px 3px hsl(256 18% 22% / 0.07);
+  }
+  html.dark {
+    --background: 264 12% 8%;
+    --foreground: 270 12% 92%;
+    --card: 264 10% 12%;
+    --card-foreground: 270 12% 92%;
+    --muted: 264 8% 20%;
+    --muted-foreground: 268 8% 66%;
+    --border: 264 8% 24%;
+    --input: 264 8% 30%;
+    --primary: 256 95% 84%;
+    --primary-foreground: 258 42% 18%;
+    --accent: 258 28% 26%;
+    --accent-foreground: 256 90% 90%;
+    --ring: 256 90% 80%;
+    --ok: 142 45% 58%; --warn: 36 90% 62%; --danger: 4 75% 70%;
+    --shadow: 0 1px 2px hsl(0 0% 0% / 0.4);
+  }
+  html.liquid-glass {
+    --background: 220 20% 94%;
+    --foreground: 220 10% 12%;
+    --card: 0 0% 100% / 0.45;
+    --card-foreground: 220 10% 12%;
+    --muted: 220 15% 92%;
+    --muted-foreground: 220 6% 40%;
+    --border: 0 0% 100% / 0.5;
+    --input: 220 15% 88%;
+    --primary: 210 60% 50%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 210 50% 92%;
+    --accent-foreground: 210 50% 28%;
+    --ring: 210 60% 50%;
+    --ok: 142 55% 38%; --warn: 32 95% 44%; --danger: 2 68% 48%;
+    --radius: 1.25rem;
+    --shadow: 0 4px 30px hsl(220 40% 50% / 0.08);
+  }
+  html.liquid-glass body {
+    background: linear-gradient(135deg, hsl(210 40% 88%), hsl(260 30% 90%), hsl(320 20% 92%));
+    background-attachment: fixed;
+  }
+  html.liquid-glass .card, html.liquid-glass .task {
+    background: hsla(var(--card));
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
+
+  header.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 { font-size: 22px; }
+  .brand .dot { color: hsl(var(--primary)); }
+  .brand .tag { color: hsl(var(--muted-foreground)); font-size: 12px; }
+  .spacer { flex: 1 1 auto; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 34px; padding: 0 14px; font-size: 13px; font-weight: 500; white-space: nowrap;
+    border: 1px solid hsl(var(--border)); border-radius: 999px;
+    background: hsl(var(--card)); color: hsl(var(--card-foreground));
+    cursor: pointer; user-select: none;
+    transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, opacity .12s;
+  }
+  .btn:hover { background: hsl(var(--accent)); }
+  .btn:active { transform: translateY(0.5px); }
+  .btn--primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .btn--primary:hover { opacity: .92; }
+  .btn--ghost { border-color: transparent; background: transparent; }
+  .btn--ghost:hover { background: hsl(var(--accent)); }
+  .btn--icon { width: 34px; padding: 0; }
+  .btn--sm { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn--sm.btn--icon { width: 28px; }
+  .btn--danger:hover { color: hsl(var(--danger)); }
+  .btn[aria-pressed="true"] { border-color: hsl(var(--ring)); background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+
+  .input, .select, .textarea {
+    height: 34px; width: 100%; padding: 0 10px; font: inherit; font-size: 13px; color: inherit;
+    background: hsl(var(--background)); border: 1px solid hsl(var(--input)); border-radius: calc(var(--radius) - 2px);
+  }
+  .textarea { height: auto; min-height: 70px; padding: 8px 10px; line-height: 1.5; resize: vertical; }
+  .input::placeholder, .textarea::placeholder { color: hsl(var(--muted-foreground)); }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field > span { display: block; font-size: 12px; margin-bottom: 4px; color: hsl(var(--muted-foreground)); }
+
+  .views { display: flex; gap: 4px; background: hsl(var(--muted)); padding: 3px; border-radius: 999px; }
+  .views button {
+    border: 0; background: transparent; color: hsl(var(--muted-foreground));
+    height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .views button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: var(--shadow); }
+
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .chip {
+    height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 0; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+
+  /* ── Task card ────────────────────────────────────────────────────── */
+  .task {
+    background: hsl(var(--card)); color: hsl(var(--card-foreground));
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 12px; cursor: grab;
+  }
+  .task.dragging { opacity: .4; }
+  .task.done { opacity: .65; }
+  .task .row1 { display: flex; align-items: flex-start; gap: 8px; }
+  .task .check {
+    margin-top: 2px; flex: none; width: 18px; height: 18px; border-radius: 999px;
+    border: 2px solid hsl(var(--border)); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: transparent;
+  }
+  .task.done .check { background: hsl(var(--ok)); border-color: hsl(var(--ok)); color: hsl(0 0% 100%); }
+  .task .title { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; word-break: break-word; }
+  .task.done .title { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
+  .task .notes { margin: 6px 0 0 26px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .task .meta { margin: 8px 0 0 26px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 11px; color: hsl(var(--muted-foreground)); }
+  .task .prio { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+  .task .prio .dot { width: 6px; height: 6px; border-radius: 999px; }
+  .task .group { margin-left: auto; background: hsl(var(--muted)); padding: 2px 6px; border-radius: 6px; }
+  .task .actions { display: flex; gap: 2px; }
+  .task .actions button {
+    border: 0; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer;
+    width: 24px; height: 24px; border-radius: 6px; font-size: 13px;
+  }
+  .task .actions button:hover { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+  .task .progress { margin: 8px 0 0 26px; height: 5px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+  .task .progress > span { display: block; height: 100%; background: hsl(var(--primary)); }
+
+  /* ── Kanban ───────────────────────────────────────────────────────── */
+  .kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  @media (max-width: 900px) { .kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .kanban { grid-template-columns: 1fr; } }
+  .col { background: hsl(var(--muted) / .5); border-radius: var(--radius); padding: 10px; min-height: 120px; }
+  .col > header { display: flex; align-items: center; gap: 6px; padding: 4px 6px 10px; }
+  .col > header .dot { width: 8px; height: 8px; border-radius: 999px; }
+  .col > header h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .col > header .count { font-size: 10px; color: hsl(var(--muted-foreground)); }
+  .col .stack { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+  .col.dragover { outline: 2px dashed hsl(var(--ring)); outline-offset: 2px; }
+  .col .empty { border: 1px dashed hsl(var(--border)); border-radius: calc(var(--radius) - 2px); text-align: center; color: hsl(var(--muted-foreground)); font-size: 11px; padding: 20px 8px; }
+
+  /* ── List ─────────────────────────────────────────────────────────── */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+
+  /* ── Tree ─────────────────────────────────────────────────────────── */
+  .tree-group { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; margin-bottom: 10px; }
+  .tree-group > header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: hsl(var(--muted) / .5); font-weight: 600; font-size: 13px; }
+  .tree-group > header .count { margin-left: auto; font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 400; }
+  .tree-group .stack { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+
+  /* ── Waterflow ────────────────────────────────────────────────────── */
+  .wave { margin-bottom: 20px; }
+  .wave h3 { font-size: 15px; margin-bottom: 8px; }
+  .wave .stack { display: flex; flex-direction: column; gap: 8px; }
+
+  .empty-state { text-align: center; padding: 50px 20px; color: hsl(var(--muted-foreground)); }
+  .empty-state h3 { margin-bottom: 6px; color: hsl(var(--foreground)); }
+
+  /* ── Modal ────────────────────────────────────────────────────────── */
+  .modal-backdrop { position: fixed; inset: 0; background: hsl(0 0% 0% / .35); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 40; }
+  .modal { width: 100%; max-width: 480px; background: hsl(var(--card)); color: hsl(var(--card-foreground)); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+  .modal header { display: flex; align-items: center; margin-bottom: 14px; }
+  .modal header h2 { font-size: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <a href="index.html" title="Back to tarmac">tarmac</a>
+        <span class="dot">•</span>
+        <h1>tasks</h1>
+      </div>
+      <div class="spacer"></div>
+      <div class="toolbar">
+        <div class="views" id="views" role="tablist" aria-label="View">
+          <button data-view="kanban" aria-pressed="true">Kanban</button>
+          <button data-view="list" aria-pressed="false">List</button>
+          <button data-view="tree" aria-pressed="false">Tree</button>
+          <button data-view="waterflow" aria-pressed="false">Waterflow</button>
+        </div>
+        <button class="btn btn--primary" id="btn-add">+ New task</button>
+      </div>
+    </header>
+
+    <div class="filters">
+      <input class="input" id="search" placeholder="Search tasks…" style="max-width:220px" />
+      <select class="select" id="sel-group" style="max-width:170px"><option value="">All groups</option></select>
+      <span style="flex:1 1 auto"></span>
+      <button class="chip" data-prio="high">High</button>
+      <button class="chip" data-prio="medium">Medium</button>
+      <button class="chip" data-prio="low">Low</button>
+    </div>
+
+    <main id="view-root"></main>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── storage ──────────────────────────────────────────────────────────
+  const KEY = "tarmac:tasks";
+  const VERSION = 1;
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  const STATUSES = [
+    { id: "backlog", label: "Backlog", color: "220 43% 44%" },
+    { id: "today", label: "Today", color: "14 82% 61%" },
+    { id: "doing", label: "In motion", color: "161 45% 43%" },
+    { id: "done", label: "Complete", color: "67 48% 43%" },
+  ];
+  const PRIORITIES = {
+    low: { label: "Low", color: "161 45% 43%" },
+    medium: { label: "Medium", color: "38 76% 48%" },
+    high: { label: "High", color: "14 82% 61%" },
+  };
+
+  function seedTasks() {
+    return [
+      { id: "t1", title: "Shape the first-run ritual", notes: "A tiny morning checklist.", status: "today", priority: "high", group: "Personal", due: "", progress: 40 },
+      { id: "t2", title: "Draft the reading list", notes: "", status: "backlog", priority: "low", group: "Personal", due: "", progress: 0 },
+      { id: "t3", title: "Send invoice", notes: "Attach usage report first.", status: "doing", priority: "high", group: "Admin", due: "", progress: 70 },
+      { id: "t4", title: "Archive old notes", notes: "", status: "done", priority: "medium", group: "Admin", progress: 100, due: "" },
+    ];
+  }
+
+  function normalize(raw) {
+    let tasks = [];
+    if (raw && Array.isArray(raw.tasks)) tasks = raw.tasks;
+    else if (Array.isArray(raw)) tasks = raw; // tolerate a bare array
+    tasks = tasks.filter(t => t && typeof t === "object" && t.id && typeof t.title === "string").map(t => ({
+      id: String(t.id),
+      title: String(t.title).slice(0, 300),
+      notes: typeof t.notes === "string" ? t.notes.slice(0, 2000) : "",
+      status: STATUSES.some(s => s.id === t.status) ? t.status : "backlog",
+      priority: PRIORITIES[t.priority] ? t.priority : "medium",
+      group: typeof t.group === "string" && t.group.trim() ? t.group.trim().slice(0, 60) : "General",
+      due: typeof t.due === "string" ? t.due : "",
+      progress: Number.isFinite(t.progress) ? Math.max(0, Math.min(100, t.progress)) : 0,
+    }));
+    return { version: VERSION, tasks };
+  }
+
+  function load() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (raw) return normalize(raw);
+    } catch {}
+    return normalize({ tasks: seedTasks() });
+  }
+
+  let state = load();
+  let saveTimer = null;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+    }, 150);
+  }
+  function mutate(fn) { fn(state); save(); render(); }
+
+  // ── theme sync (read-only: never writes tarmac:state) ───────────────
+  function applyTheme() {
+    try {
+      const t = JSON.parse(localStorage.getItem("tarmac:state") || "null");
+      const theme = t && t.theme;
+      const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.toggle("dark", !!dark);
+      document.documentElement.classList.toggle("liquid-glass", theme === "glass");
+    } catch {}
+  }
+  applyTheme();
+  window.addEventListener("storage", (e) => { if (e.key === "tarmac:state") applyTheme(); });
+
+  // ── ui state ─────────────────────────────────────────────────────────
+  let view = "kanban";
+  let query = "";
+  let groupFilter = "";
+  let prioFilter = new Set();
+
+  const $ = (sel, el) => (el || document).querySelector(sel);
+  const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
+
+  function filteredTasks() {
+    const q = query.trim().toLowerCase();
+    return state.tasks.filter(t =>
+      (!groupFilter || t.group === groupFilter) &&
+      (prioFilter.size === 0 || prioFilter.has(t.priority)) &&
+      (!q || t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q))
+    );
+  }
+
+  function priorityBadge(p) {
+    const m = PRIORITIES[p];
+    return `<span class="prio" style="color:hsl(${m.color})"><span class="dot" style="background:hsl(${m.color})"></span>${m.label}</span>`;
+  }
+
+  function taskCard(t, { compact } = {}) {
+    return `
+      <article class="task ${t.status === "done" ? "done" : ""}" draggable="true" data-id="${t.id}">
+        <div class="row1">
+          <button class="check" data-action="toggle" data-id="${t.id}" aria-label="Toggle complete">${t.status === "done" ? "✓" : ""}</button>
+          <div class="title" data-action="edit" data-id="${t.id}" role="button" tabindex="0">${escapeHtml(t.title)}</div>
+          <div class="actions">
+            <button data-action="edit" data-id="${t.id}" title="Edit">✎</button>
+            <button data-action="delete" data-id="${t.id}" title="Delete">✕</button>
+          </div>
+        </div>
+        ${!compact && t.notes ? `<p class="notes">${escapeHtml(t.notes)}</p>` : ""}
+        <div class="meta">
+          ${priorityBadge(t.priority)}
+          ${t.due ? `<span>${escapeHtml(t.due)}</span>` : ""}
+          <span class="group">${escapeHtml(t.group)}</span>
+        </div>
+        ${t.progress > 0 && t.status !== "done" ? `<div class="progress"><span style="width:${t.progress}%"></span></div>` : ""}
+      </article>`;
+  }
+
+  function renderKanban(tasks) {
+    return `<div class="kanban">${STATUSES.map(s => {
+      const col = tasks.filter(t => t.status === s.id);
+      return `<section class="col" data-status="${s.id}">
+        <header><span class="dot" style="background:hsl(${s.color})"></span><h3>${s.label}</h3><span class="count">${col.length}</span></header>
+        <div class="stack">
+          ${col.map(t => taskCard(t)).join("") || '<div class="empty">Drop a task here</div>'}
+        </div>
+      </section>`;
+    }).join("")}</div>`;
+  }
+
+  function renderList(tasks) {
+    if (!tasks.length) return emptyState();
+    return `<div class="list">${tasks.map(t => taskCard(t)).join("")}</div>`;
+  }
+
+  function renderTree(tasks) {
+    const groups = [...new Set(tasks.map(t => t.group))];
+    if (!groups.length) return emptyState();
+    return groups.map(g => {
+      const items = tasks.filter(t => t.group === g);
+      const done = items.filter(t => t.status === "done").length;
+      return `<section class="tree-group">
+        <header>${escapeHtml(g)}<span class="count">${done}/${items.length} complete</span></header>
+        <div class="stack">${items.map(t => taskCard(t, { compact: true })).join("")}</div>
+      </section>`;
+    }).join("");
+  }
+
+  function renderWaterflow(tasks) {
+    const dues = [...new Set(tasks.map(t => t.due || "No date"))];
+    if (!dues.length) return emptyState();
+    return dues.map(d => {
+      const items = tasks.filter(t => (t.due || "No date") === d);
+      return `<section class="wave"><h3>${escapeHtml(d)}</h3><div class="stack">${items.map(t => taskCard(t, { compact: true })).join("")}</div></section>`;
+    }).join("");
+  }
+
+  function emptyState() {
+    return `<div class="empty-state"><h3>A clear patch of sky</h3><p>No tasks match. Add one to get started.</p></div>`;
+  }
+
+  function render() {
+    const tasks = filteredTasks();
+    const root = $("#view-root");
+    if (view === "kanban") root.innerHTML = renderKanban(tasks);
+    else if (view === "list") root.innerHTML = renderList(tasks);
+    else if (view === "tree") root.innerHTML = renderTree(tasks);
+    else root.innerHTML = renderWaterflow(tasks);
+
+    // group filter options (rebuild only if changed set)
+    const groups = [...new Set(state.tasks.map(t => t.group))];
+    const sel = $("#sel-group");
+    const wanted = ["", ...groups];
+    const current = $$("option", sel).map(o => o.value);
+    if (current.join("|") !== wanted.join("|")) {
+      sel.innerHTML = `<option value="">All groups</option>` + groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
+      sel.value = groupFilter;
+    }
+  }
+
+  // ── modal (add / edit) ───────────────────────────────────────────────
+  function openModal(task) {
+    const isEdit = !!task;
+    const draft = task ? { ...task } : { title: "", notes: "", status: "backlog", priority: "medium", group: "", due: "", progress: 0 };
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <header><h2>${isEdit ? "Edit task" : "New task"}</h2></header>
+        <form id="task-form">
+          <label class="field"><span>Title</span><input class="input" id="f-title" required value="${escapeHtml(draft.title)}" /></label>
+          <label class="field"><span>Notes</span><textarea class="textarea" id="f-notes">${escapeHtml(draft.notes)}</textarea></label>
+          <div class="grid2">
+            <label class="field"><span>Status</span>
+              <select class="select" id="f-status">${STATUSES.map(s => `<option value="${s.id}" ${draft.status === s.id ? "selected" : ""}>${s.label}</option>`).join("")}</select>
+            </label>
+            <label class="field"><span>Priority</span>
+              <select class="select" id="f-priority">${Object.keys(PRIORITIES).map(p => `<option value="${p}" ${draft.priority === p ? "selected" : ""}>${PRIORITIES[p].label}</option>`).join("")}</select>
+            </label>
+            <label class="field"><span>Group</span><input class="input" id="f-group" value="${escapeHtml(draft.group)}" placeholder="General" /></label>
+            <label class="field"><span>Due</span><input class="input" id="f-due" value="${escapeHtml(draft.due)}" placeholder="e.g. Fri · Mar 28" /></label>
+          </div>
+          <label class="field"><span>Progress (%)</span><input class="input" type="number" min="0" max="100" id="f-progress" value="${draft.progress}" /></label>
+          <footer>
+            <button type="button" class="btn btn--ghost" id="f-cancel">Cancel</button>
+            <button type="submit" class="btn btn--primary">${isEdit ? "Save" : "Add task"}</button>
+          </footer>
+        </form>
+      </div>`;
+    document.body.appendChild(backdrop);
+    $("#f-title", backdrop).focus();
+
+    function close() { backdrop.remove(); }
+    backdrop.addEventListener("mousedown", e => { if (e.target === backdrop) close(); });
+    $("#f-cancel", backdrop).addEventListener("click", close);
+    $("#task-form", backdrop).addEventListener("submit", e => {
+      e.preventDefault();
+      const title = $("#f-title", backdrop).value.trim();
+      if (!title) return;
+      const data = {
+        title,
+        notes: $("#f-notes", backdrop).value.trim(),
+        status: $("#f-status", backdrop).value,
+        priority: $("#f-priority", backdrop).value,
+        group: $("#f-group", backdrop).value.trim() || "General",
+        due: $("#f-due", backdrop).value.trim(),
+        progress: Math.max(0, Math.min(100, Number($("#f-progress", backdrop).value) || 0)),
+      };
+      mutate(s => {
+        if (isEdit) {
+          const t = s.tasks.find(x => x.id === task.id);
+          Object.assign(t, data);
+        } else {
+          s.tasks.push({ id: "t" + Date.now(), ...data });
+        }
+      });
+      close();
+    });
+  }
+
+  // ── event wiring ─────────────────────────────────────────────────────
+  $("#btn-add").addEventListener("click", () => openModal(null));
+
+  $("#views").addEventListener("click", e => {
+    const btn = e.target.closest("button[data-view]");
+    if (!btn) return;
+    view = btn.dataset.view;
+    $$("#views button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+    render();
+  });
+
+  $("#search").addEventListener("input", e => { query = e.target.value; render(); });
+  $("#sel-group").addEventListener("change", e => { groupFilter = e.target.value; render(); });
+  $$(".chip").forEach(chip => chip.addEventListener("click", () => {
+    const p = chip.dataset.prio;
+    if (prioFilter.has(p)) prioFilter.delete(p); else prioFilter.add(p);
+    chip.setAttribute("aria-pressed", String(prioFilter.has(p)));
+    render();
+  }));
+
+  document.addEventListener("click", e => {
+    const action = e.target.closest("[data-action]");
+    if (!action) return;
+    const id = action.dataset.id;
+    if (action.dataset.action === "toggle") {
+      mutate(s => {
+        const t = s.tasks.find(x => x.id === id);
+        const next = t.status === "done" ? "today" : "done";
+        t.status = next;
+        t.progress = next === "done" ? 100 : Math.min(t.progress, 92);
+      });
+    } else if (action.dataset.action === "edit") {
+      openModal(state.tasks.find(x => x.id === id));
+    } else if (action.dataset.action === "delete") {
+      const t = state.tasks.find(x => x.id === id);
+      if (t && confirm(`Remove "${t.title}"?`)) mutate(s => { s.tasks = s.tasks.filter(x => x.id !== id); });
+    }
+  });
+
+  // drag and drop (kanban only)
+  let draggingId = null;
+  document.addEventListener("dragstart", e => {
+    const card = e.target.closest(".task");
+    if (!card) return;
+    draggingId = card.dataset.id;
+    card.classList.add("dragging");
+  });
+  document.addEventListener("dragend", e => {
+    const card = e.target.closest(".task");
+    if (card) card.classList.remove("dragging");
+    draggingId = null;
+  });
+  document.addEventListener("dragover", e => {
+    const col = e.target.closest(".col");
+    if (!col) return;
+    e.preventDefault();
+    col.classList.add("dragover");
+  });
+  document.addEventListener("dragleave", e => {
+    const col = e.target.closest(".col");
+    if (col) col.classList.remove("dragover");
+  });
+  document.addEventListener("drop", e => {
+    const col = e.target.closest(".col");
+    if (!col || !draggingId) return;
+    e.preventDefault();
+    col.classList.remove("dragover");
+    const status = col.dataset.status;
+    mutate(s => {
+      const t = s.tasks.find(x => x.id === draggingId);
+      if (t) { t.status = status; if (status === "done") t.progress = 100; }
+    });
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
