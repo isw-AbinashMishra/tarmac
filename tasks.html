@@ -27,6 +27,9 @@
     --danger: 2 68% 48%;
     --radius: 0.75rem;
     --shadow: 0 1px 3px hsl(256 18% 22% / 0.07);
+    --shadow-md: 0 6px 18px hsl(256 18% 22% / 0.12);
+    --shadow-lg: -8px 0 30px hsl(256 18% 22% / 0.10);
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   }
   html.dark {
     --background: 264 12% 8%;
@@ -44,6 +47,8 @@
     --ring: 256 90% 80%;
     --ok: 142 45% 58%; --warn: 36 90% 62%; --danger: 4 75% 70%;
     --shadow: 0 1px 2px hsl(0 0% 0% / 0.4);
+    --shadow-md: 0 8px 22px hsl(0 0% 0% / 0.5);
+    --shadow-lg: -8px 0 30px hsl(0 0% 0% / 0.45);
   }
   html.liquid-glass {
     --background: 220 20% 94%;
@@ -67,7 +72,7 @@
     background: linear-gradient(135deg, hsl(210 40% 88%), hsl(260 30% 90%), hsl(320 20% 92%));
     background-attachment: fixed;
   }
-  html.liquid-glass .card, html.liquid-glass .task {
+  html.liquid-glass .topbar, html.liquid-glass .attn, html.liquid-glass .drawer, html.liquid-glass .task {
     background: hsla(var(--card));
     backdrop-filter: blur(20px) saturate(1.4);
     -webkit-backdrop-filter: blur(20px) saturate(1.4);
@@ -76,7 +81,7 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
-    margin: 0;
+    margin: 0; overflow: hidden;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
     font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -85,35 +90,53 @@
   :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
   a { color: inherit; text-decoration: none; }
   h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
-  .wrap { max-width: 1400px; margin: 0 auto; padding: 20px clamp(12px, 3vw, 28px) 64px; }
+  svg.ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .spacer { flex: 1; }
+  .kicker { font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
 
-  header.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-  .brand { display: flex; align-items: baseline; gap: 10px; }
-  .brand h1 { font-size: 22px; }
-  .brand .dot { color: hsl(var(--primary)); }
-  .brand .tag { color: hsl(var(--muted-foreground)); font-size: 12px; }
-  .spacer { flex: 1 1 auto; }
-  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  /* ── App shell: top bar, then workspace + drawer filling the viewport ─ */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  .topbar {
+    height: 56px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 20px;
+    background: hsl(var(--card)); border-bottom: 1px solid hsl(var(--border));
+  }
+  .topbar .mark {
+    width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; flex: none;
+    background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 800; font-size: 13px;
+  }
+  .topbar .wordmark { font-size: 15px; font-weight: 800; letter-spacing: -0.03em; }
+  .topbar .sep { width: 1px; height: 22px; background: hsl(var(--border)); margin: 0 4px; }
+  .topbar .crumb { font-size: 13px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+  .topbar .crumb strong { color: hsl(var(--foreground)); font-weight: 600; }
+  .search {
+    display: flex; align-items: center; gap: 8px; height: 34px; width: 280px; padding: 0 8px 0 12px;
+    border: 1px solid hsl(var(--border)); border-radius: 8px; background: hsl(var(--muted) / .6); color: hsl(var(--muted-foreground));
+  }
+  .search input { flex: 1; min-width: 0; border: 0; background: transparent; color: hsl(var(--foreground)); font: inherit; font-size: 13px; outline: none; }
+  .search:focus-within { border-color: hsl(var(--ring)); background: hsl(var(--card)); }
+  .search kbd { font: 500 11px/1 var(--mono); border: 1px solid hsl(var(--input)); border-radius: 4px; padding: 2px 5px; }
+
+  .body { flex: 1; min-height: 0; display: flex; }
+  .work { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px 20px 18px 24px; }
 
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    height: 34px; padding: 0 14px; font-size: 13px; font-weight: 500; white-space: nowrap;
-    border: 1px solid hsl(var(--border)); border-radius: 999px;
+    height: 32px; padding: 0 12px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    border: 1px solid hsl(var(--input)); border-radius: 8px;
     background: hsl(var(--card)); color: hsl(var(--card-foreground));
     cursor: pointer; user-select: none;
-    transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, opacity .12s;
+    transition: background .12s ease, border-color .12s ease, opacity .12s;
   }
-  .btn:hover { background: hsl(var(--accent)); }
-  .btn:active { transform: translateY(0.5px); }
+  .btn:hover { background: hsl(var(--muted)); }
   .btn--primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
-  .btn--primary:hover { opacity: .92; }
+  .btn--primary:hover { background: hsl(var(--primary)); opacity: .9; }
   .btn--ghost { border-color: transparent; background: transparent; }
-  .btn--ghost:hover { background: hsl(var(--accent)); }
-  .btn--icon { width: 34px; padding: 0; }
-  .btn--sm { height: 28px; padding: 0 10px; font-size: 12px; }
-  .btn--sm.btn--icon { width: 28px; }
   .btn--danger:hover { color: hsl(var(--danger)); }
-  .btn[aria-pressed="true"] { border-color: hsl(var(--ring)); background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+  .icon-btn {
+    width: 30px; height: 30px; border: 0; border-radius: 7px; display: grid; place-items: center; cursor: pointer;
+    background: transparent; color: hsl(var(--muted-foreground));
+  }
+  .icon-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 
   .input, .select, .textarea {
     height: 34px; width: 100%; padding: 0 10px; font: inherit; font-size: 13px; color: inherit;
@@ -124,122 +147,233 @@
   label.field { display: block; margin-bottom: 10px; }
   label.field > span { display: block; font-size: 12px; margin-bottom: 4px; color: hsl(var(--muted-foreground)); }
 
-  .views { display: flex; gap: 4px; background: hsl(var(--muted)); padding: 3px; border-radius: 999px; }
+  /* ── Title row ────────────────────────────────────────────────────── */
+  .titlerow { flex: none; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .titlerow h1 { font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+  .titlerow .sub { font-size: 12.5px; font-weight: 500; color: hsl(var(--muted-foreground)); }
+  .filter { position: relative; display: inline-flex; align-items: center; }
+  .filter svg.ic { position: absolute; left: 10px; width: 14px; height: 14px; pointer-events: none; color: hsl(var(--muted-foreground)); }
+  .filter select {
+    appearance: none; height: 32px; padding: 0 28px 0 30px; border: 1px solid hsl(var(--input)); border-radius: 8px;
+    background: hsl(var(--card)); color: hsl(var(--foreground)); font: 600 12.5px/1 inherit; cursor: pointer;
+  }
+  .filter::after { content: "▾"; position: absolute; right: 10px; font-size: 10px; color: hsl(var(--muted-foreground)); pointer-events: none; }
+  .views { display: flex; gap: 2px; padding: 3px; background: hsl(var(--muted)); border-radius: 8px; }
   .views button {
     border: 0; background: transparent; color: hsl(var(--muted-foreground));
-    height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+    padding: 6px 10px; border-radius: 6px; font: 500 12px/1 inherit; cursor: pointer;
   }
-  .views button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); box-shadow: var(--shadow); }
+  .views button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); font-weight: 600; box-shadow: var(--shadow); }
 
-  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
-  .chip {
-    height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
-    background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: 0; cursor: pointer;
+  /* ── Needs-attention strip ────────────────────────────────────────── */
+  .attn {
+    flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-width: 0; overflow: hidden;
+    background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 10px;
   }
-  .chip[aria-pressed="true"] { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+  .attn .kicker { flex: none; padding-right: 6px; display: inline-flex; align-items: center; gap: 6px; }
+  .attn .kicker svg.ic { width: 14px; height: 14px; color: hsl(var(--danger)); }
+  .attn .pill {
+    display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; min-width: 0; flex: 0 1 auto;
+    border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--card)); color: inherit; cursor: pointer; font: inherit;
+  }
+  .attn .pill:hover { border-color: hsl(var(--ring) / .6); }
+  .attn .pill[aria-current="true"] { background: hsl(var(--accent)); border-color: hsl(var(--ring) / .6); }
+  .attn .pill .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .attn .pill .tid { font: 500 11px/1 var(--mono); color: hsl(var(--muted-foreground)); flex: none; }
+  .attn .pill .t { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .attn .more { flex: none; font-size: 12px; font-weight: 600; color: hsl(var(--primary)); padding-left: 4px; }
+  .attn .none { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
 
-  /* ── Task card ────────────────────────────────────────────────────── */
+  /* Fills whatever height is left; board columns scroll on their own,
+     other views scroll the region as a whole. */
+  #view-root { flex: 1; min-height: 0; overflow: auto; }
+  #view-root.is-board { overflow-x: auto; overflow-y: hidden; }
+
+  /* ── Task card (compact) ──────────────────────────────────────────── */
   .task {
+    flex: none; display: flex; flex-direction: column; gap: 9px; padding: 11px 11px 10px;
     background: hsl(var(--card)); color: hsl(var(--card-foreground));
-    border: 1px solid hsl(var(--border)); border-radius: var(--radius); box-shadow: var(--shadow);
-    padding: 12px; cursor: grab;
+    border: 1px solid hsl(var(--border)); border-radius: 9px; box-shadow: var(--shadow);
+    cursor: pointer; transition: box-shadow 180ms, border-color 180ms;
   }
+  .task:hover { border-color: hsl(var(--ring) / .5); }
+  .task[aria-selected="true"] { border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .18), var(--shadow-md); }
   .task.dragging { opacity: .4; }
-  .task.done { opacity: .65; }
-  .task .row1 { display: flex; align-items: flex-start; gap: 8px; }
-  .task .check {
-    margin-top: 2px; flex: none; width: 18px; height: 18px; border-radius: 999px;
-    border: 2px solid hsl(var(--border)); display: flex; align-items: center; justify-content: center;
-    cursor: pointer; background: transparent;
-  }
-  .task.done .check { background: hsl(var(--ok)); border-color: hsl(var(--ok)); color: hsl(0 0% 100%); }
-  .task .title { font-weight: 600; font-size: 13px; flex: 1; min-width: 0; word-break: break-word; }
+  .task.done { opacity: .7; }
+  .task .r1 { display: flex; align-items: center; gap: 6px; }
+  .task .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .task .tid { font: 500 10.5px/1 var(--mono); color: hsl(var(--muted-foreground)); }
+  .task .sq { margin-left: auto; width: 8px; height: 8px; border-radius: 2px; background: hsl(var(--h) 55% 52%); }
+  .task .title { font-size: 13px; font-weight: 600; line-height: 1.3; word-break: break-word; text-wrap: pretty; }
   .task.done .title { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
-  .task .notes { margin: 6px 0 0 26px; font-size: 12px; color: hsl(var(--muted-foreground)); }
-  .task .meta { margin: 8px 0 0 26px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 11px; color: hsl(var(--muted-foreground)); }
-  .task .prio { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
-  .task .prio .dot { width: 6px; height: 6px; border-radius: 999px; }
-  .task .group { margin-left: auto; background: hsl(var(--muted)); padding: 2px 6px; border-radius: 6px; }
-  .task .actions { display: flex; gap: 2px; }
-  .task .actions button {
-    border: 0; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer;
-    width: 24px; height: 24px; border-radius: 6px; font-size: 13px;
+  .task .track { height: 3px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+  .task .fill { height: 100%; border-radius: 999px; transition: width 280ms; }
+  .task .foot { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 500; color: hsl(var(--muted-foreground)); min-width: 0; }
+  .task .foot .grp { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .task .foot .due { margin-left: auto; white-space: nowrap; flex: none; }
+  .task .check {
+    flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0;
+    border: 2px solid hsl(var(--border)); background: transparent; color: hsl(0 0% 100%); font-size: 10px; line-height: 1;
   }
-  .task .actions button:hover { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
-  .task .progress { margin: 8px 0 0 26px; height: 5px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
-  .task .progress > span { display: block; height: 100%; background: hsl(var(--primary)); }
+  .task .check:hover { border-color: hsl(var(--ok)); }
+  .task.done .check { background: hsl(var(--ok)); border-color: hsl(var(--ok)); }
 
-  /* ── Kanban ───────────────────────────────────────────────────────── */
-  .kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
-  @media (max-width: 900px) { .kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 560px) { .kanban { grid-template-columns: 1fr; } }
-  .col { background: hsl(var(--muted) / .5); border-radius: var(--radius); padding: 10px; min-height: 120px; }
-  .col > header { display: flex; align-items: center; gap: 6px; padding: 4px 6px 10px; }
-  .col > header .dot { width: 8px; height: 8px; border-radius: 999px; }
-  .col > header h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-  .col > header .count { font-size: 10px; color: hsl(var(--muted-foreground)); }
-  .col .stack { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
-  .col.dragover { outline: 2px dashed hsl(var(--ring)); outline-offset: 2px; }
-  .col .empty { border: 1px dashed hsl(var(--border)); border-radius: calc(var(--radius) - 2px); text-align: center; color: hsl(var(--muted-foreground)); font-size: 11px; padding: 20px 8px; }
+  /* ── Board: open stages + collapsible Complete rail ───────────────── */
+  .board { height: 100%; display: grid; gap: 10px; }
+  .col {
+    display: flex; flex-direction: column; min-height: 0; min-width: 0; border-radius: 12px;
+    background: hsl(var(--muted) / .6); outline: 2px dashed transparent; outline-offset: -2px; transition: background .12s;
+  }
+  .col.dragover { background: hsl(var(--accent) / .7); outline-color: hsl(var(--ring)); }
+  .col > header { flex: none; display: flex; align-items: center; gap: 8px; padding: 11px 8px 9px 12px; }
+  .col > header .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .col > header h3 { font-size: 12.5px; font-weight: 700; }
+  .col > header .count { font: 600 11px/1 var(--mono); color: hsl(var(--muted-foreground)); }
+  .col > header .wip { font: 600 10.5px/1 var(--mono); padding: 3px 5px; border-radius: 4px; color: hsl(var(--muted-foreground)); background: hsl(var(--card)); }
+  .col > header .wip.over { color: hsl(var(--danger)); background: hsl(var(--danger) / .12); }
+  .col > header .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
+  .col > header .icon-btn:hover { background: hsl(var(--card)); }
+  .col .stack { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 7px; padding: 0 7px 10px; }
+  .col .empty { border: 1px dashed hsl(var(--border)); border-radius: 9px; text-align: center; color: hsl(var(--muted-foreground)); font-size: 12px; padding: 22px 8px; }
+  .rail {
+    display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0;
+    border: 0; border-radius: 12px; background: hsl(var(--muted) / .6); color: inherit; cursor: pointer; font: inherit;
+    outline: 2px dashed transparent; outline-offset: -2px;
+  }
+  .rail:hover { background: hsl(var(--muted)); }
+  .rail.dragover { background: hsl(var(--accent) / .7); outline-color: hsl(var(--ring)); }
+  .rail .count { font: 600 11px/1 var(--mono); color: hsl(var(--muted-foreground)); }
+  .rail .name { writing-mode: vertical-rl; font-size: 12.5px; font-weight: 700; }
+  .rail .dot { width: 8px; height: 8px; border-radius: 50%; }
 
-  /* ── List ─────────────────────────────────────────────────────────── */
-  .list { display: flex; flex-direction: column; gap: 8px; }
+  /* ── List / Tree / Waterflow use a responsive card grid ───────────── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; align-items: start; }
+  .section { margin-bottom: 18px; }
+  .section > header { display: flex; align-items: baseline; gap: 10px; padding: 4px 2px 10px; }
+  .section > header h3 { font-size: 15px; font-weight: 700; }
+  .section > header .count { font: 500 11px/1 var(--mono); color: hsl(var(--muted-foreground)); }
 
-  /* ── Tree ─────────────────────────────────────────────────────────── */
-  .tree-group { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); overflow: hidden; margin-bottom: 10px; }
-  .tree-group > header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: hsl(var(--muted) / .5); font-weight: 600; font-size: 13px; }
-  .tree-group > header .count { margin-left: auto; font-size: 11px; color: hsl(var(--muted-foreground)); font-weight: 400; }
-  .tree-group .stack { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
-
-  /* ── Waterflow ────────────────────────────────────────────────────── */
-  .wave { margin-bottom: 20px; }
-  .wave h3 { font-size: 15px; margin-bottom: 8px; }
-  .wave .stack { display: flex; flex-direction: column; gap: 8px; }
-
-  .empty-state { text-align: center; padding: 50px 20px; color: hsl(var(--muted-foreground)); }
+  .empty-state { text-align: center; padding: 60px 20px; color: hsl(var(--muted-foreground)); }
   .empty-state h3 { margin-bottom: 6px; color: hsl(var(--foreground)); }
+
+  /* ── Detail drawer ────────────────────────────────────────────────── */
+  .drawer {
+    width: 432px; flex: none; display: flex; flex-direction: column; min-height: 0;
+    background: hsl(var(--card)); border-left: 1px solid hsl(var(--border)); box-shadow: var(--shadow-lg);
+  }
+  .drawer .dhead { flex: none; display: flex; flex-direction: column; gap: 12px; padding: 18px 22px 16px; border-bottom: 1px solid hsl(var(--border)); }
+  .drawer .dhead .r1 { display: flex; align-items: center; gap: 8px; }
+  .drawer .tid { font: 500 12px/1 var(--mono); color: hsl(var(--muted-foreground)); }
+  .drawer .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+  .drawer .pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .drawer h2 { font-size: 21px; line-height: 1.25; font-weight: 700; word-break: break-word; text-wrap: pretty; }
+  .drawer .r3 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: hsl(var(--muted-foreground)); }
+  .drawer .group { font-size: 11px; font-weight: 600; padding: 5px 7px; border-radius: 4px; color: hsl(var(--h) 45% 36%); background: hsl(var(--h) 60% 50% / .13); }
+  html.dark .drawer .group { color: hsl(var(--h) 70% 76%); background: hsl(var(--h) 50% 50% / .18); }
+  .drawer .dbody { flex: 1; min-height: 0; overflow: auto; }
+  .drawer .sec { display: flex; flex-direction: column; gap: 12px; padding: 16px 22px; border-bottom: 1px solid hsl(var(--border)); }
+  .drawer .sec:last-child { border-bottom: 0; padding-bottom: 22px; }
+  .drawer .sec h4 { margin: 0; font-size: 13px; font-weight: 600; }
+  .drawer .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .drawer .fact { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; }
+  .drawer .fact .muted { font-weight: 500; color: hsl(var(--muted-foreground)); }
+  .drawer .meter-head { display: flex; align-items: baseline; gap: 8px; }
+  .drawer .meter-head .v { margin-left: auto; font: 600 13px/1 var(--mono); }
+  .drawer .meter { height: 6px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+  .drawer .meter > div { height: 100%; border-radius: 999px; background: hsl(var(--primary)); transition: width 280ms; }
+  .drawer input[type="range"] { width: 100%; margin: 0; accent-color: hsl(var(--primary)); }
+  .drawer .steps { display: flex; flex-direction: column; gap: 11px; }
+  .drawer .step { display: flex; align-items: center; gap: 10px; font-size: 13px; border: 0; background: transparent; color: inherit; padding: 0; cursor: pointer; text-align: left; }
+  .drawer .step .mk { width: 17px; height: 17px; flex: none; border-radius: 50%; border: 2px solid hsl(var(--input)); display: grid; place-items: center; font-size: 9px; color: hsl(0 0% 100%); }
+  .drawer .step.past .mk { background: hsl(var(--ok)); border-color: hsl(var(--ok)); }
+  .drawer .step.past { color: hsl(var(--muted-foreground)); }
+  .drawer .step.current { font-weight: 700; }
+  .drawer .step.current .mk { border-color: hsl(var(--primary)); }
+  .drawer .step.current .mk::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--primary)); }
+  .drawer .step:hover:not(.current) .mk { border-color: hsl(var(--ring)); }
+  .drawer .step .hint { margin-left: auto; font: 500 11px/1 var(--mono); color: hsl(var(--muted-foreground)); opacity: 0; }
+  .drawer .step:hover:not(.current) .hint { opacity: 1; }
+  .drawer .rel {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; width: 100%;
+    border: 1px solid hsl(var(--border)); border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left;
+  }
+  .drawer .rel:hover { background: hsl(var(--muted)); }
+  .drawer .rel .tid { font-size: 11px; }
+  .drawer .rel .t { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drawer .rel .st { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  .drawer .rel .st .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .drawer .none { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+  .drawer .notes { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .drawer .actions { flex: none; display: flex; gap: 8px; padding: 12px 22px; border-top: 1px solid hsl(var(--border)); }
+  .drawer .placeholder { flex: 1; display: grid; place-items: center; text-align: center; padding: 40px; color: hsl(var(--muted-foreground)); font-size: 13px; }
+  .drawer .placeholder strong { display: block; margin-bottom: 4px; color: hsl(var(--foreground)); font-size: 14px; }
 
   /* ── Modal ────────────────────────────────────────────────────────── */
   .modal-backdrop { position: fixed; inset: 0; background: hsl(0 0% 0% / .35); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 40; }
-  .modal { width: 100%; max-width: 480px; background: hsl(var(--card)); color: hsl(var(--card-foreground)); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+  .modal { width: 100%; max-width: 480px; background: hsl(var(--card)); color: hsl(var(--card-foreground)); border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 18px; }
+  html.liquid-glass .modal { background: hsl(0 0% 100% / .92); }
   .modal header { display: flex; align-items: center; margin-bottom: 14px; }
   .modal header h2 { font-size: 16px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .modal footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
-  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+  /* ── Narrower screens: drawer floats over the board when a task is open ─ */
+  @media (max-width: 1180px) {
+    .drawer { position: fixed; top: 56px; right: 0; bottom: 0; z-index: 30; max-width: 100vw; }
+    .drawer.is-empty { display: none; }
+  }
+  @media (max-width: 760px) {
+    .topbar { padding: 0 16px; gap: 10px; }
+    .topbar .wordmark, .topbar .sep, .topbar .crumb { display: none; }
+    .search { width: auto; flex: 1; }
+    .work { padding: 16px; }
+    .attn .kicker { display: none; }
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="top">
-      <div class="brand">
-        <a href="index.html" title="Back to tarmac">tarmac</a>
-        <span class="dot">•</span>
-        <h1>tasks</h1>
-      </div>
-      <div class="spacer"></div>
-      <div class="toolbar">
-        <div class="views" id="views" role="tablist" aria-label="View">
-          <button data-view="kanban" aria-pressed="true">Kanban</button>
-          <button data-view="list" aria-pressed="false">List</button>
-          <button data-view="tree" aria-pressed="false">Tree</button>
-          <button data-view="waterflow" aria-pressed="false">Waterflow</button>
-        </div>
-        <button class="btn btn--primary" id="btn-add">+ New task</button>
-      </div>
+  <div class="app">
+    <header class="topbar">
+      <a class="mark" href="index.html" title="Back to tarmac">t</a>
+      <a class="wordmark" href="index.html">tarmac</a>
+      <span class="sep"></span>
+      <span class="crumb"><a href="index.html">Dashboard</a> / <strong id="crumb">Tasks</strong></span>
+      <span class="spacer"></span>
+      <label class="search">
+        <svg class="ic" viewBox="0 0 24 24" style="width:15px;height:15px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search" placeholder="Search or jump to T-…" aria-label="Search tasks" autocomplete="off" />
+        <kbd>/</kbd>
+      </label>
     </header>
 
-    <div class="filters">
-      <input class="input" id="search" placeholder="Search tasks…" style="max-width:220px" />
-      <select class="select" id="sel-group" style="max-width:170px"><option value="">All groups</option></select>
-      <span style="flex:1 1 auto"></span>
-      <button class="chip" data-prio="high">High</button>
-      <button class="chip" data-prio="medium">Medium</button>
-      <button class="chip" data-prio="low">Low</button>
-    </div>
+    <div class="body">
+      <div class="work">
+        <div class="titlerow">
+          <h1>Tasks</h1>
+          <span class="sub" id="page-sub"></span>
+          <span class="spacer"></span>
+          <label class="filter" title="Filter by group">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+            <select id="sel-group" aria-label="Filter by group"><option value="">All groups</option></select>
+          </label>
+          <div class="views" id="views" role="tablist" aria-label="View">
+            <button data-view="kanban" aria-pressed="true">Board</button>
+            <button data-view="list" aria-pressed="false">List</button>
+            <button data-view="tree" aria-pressed="false">Tree</button>
+            <button data-view="waterflow" aria-pressed="false">Waterflow</button>
+          </div>
+          <button class="btn btn--primary" id="btn-add">
+            <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px;stroke-width:2.4"><path d="M5 12h14M12 5v14"/></svg>New
+          </button>
+        </div>
 
-    <main id="view-root"></main>
+        <div class="attn" id="attn"></div>
+
+        <main id="view-root"></main>
+      </div>
+
+      <aside class="drawer" id="drawer" aria-label="Task details"></aside>
+    </div>
   </div>
 
 <script>
@@ -254,17 +388,21 @@
     return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // wip: soft limit shown in the column header; null = no limit.
   const STATUSES = [
-    { id: "backlog", label: "Backlog", color: "220 43% 44%" },
-    { id: "today", label: "Today", color: "14 82% 61%" },
-    { id: "doing", label: "In motion", color: "161 45% 43%" },
-    { id: "done", label: "Complete", color: "67 48% 43%" },
+    { id: "backlog", label: "Backlog", color: "220 43% 44%", wip: null },
+    { id: "today", label: "Today", color: "14 82% 61%", wip: 5 },
+    { id: "doing", label: "In motion", color: "161 45% 43%", wip: 3 },
+    { id: "blocked", label: "Blocked", color: "2 68% 52%", wip: null },
+    { id: "review", label: "Review", color: "268 45% 58%", wip: 3 },
+    { id: "done", label: "Complete", color: "67 48% 43%", wip: null },
   ];
   const PRIORITIES = {
     low: { label: "Low", color: "161 45% 43%" },
     medium: { label: "Medium", color: "38 76% 48%" },
     high: { label: "High", color: "14 82% 61%" },
   };
+  const statusOf = id => STATUSES.find(s => s.id === id);
 
   function seedTasks() {
     return [
@@ -327,61 +465,93 @@
   let view = "kanban";
   let query = "";
   let groupFilter = "";
-  let prioFilter = new Set();
+  let selectedId = null;      // task shown in the drawer
+  let doneExpanded = false;   // Complete column collapsed to a rail by default
 
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
+
+  const taskById = id => state.tasks.find(t => t.id === id);
+  function taskNumber(t) { return "T-" + (state.tasks.indexOf(t) + 1); }
 
   function filteredTasks() {
     const q = query.trim().toLowerCase();
     return state.tasks.filter(t =>
       (!groupFilter || t.group === groupFilter) &&
-      (prioFilter.size === 0 || prioFilter.has(t.priority)) &&
-      (!q || t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q))
+      (!q || t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q) ||
+        t.group.toLowerCase().includes(q) || taskNumber(t).toLowerCase() === q)
     );
   }
 
-  function priorityBadge(p) {
-    const m = PRIORITIES[p];
-    return `<span class="prio" style="color:hsl(${m.color})"><span class="dot" style="background:hsl(${m.color})"></span>${m.label}</span>`;
+  // Stable per-group hue so the same group always gets the same tint.
+  function groupHue(name) {
+    let h = 0;
+    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return h;
   }
 
-  function taskCard(t, { compact } = {}) {
+  function taskCard(t) {
+    const p = PRIORITIES[t.priority];
+    const done = t.status === "done";
+    const pct = done ? 100 : t.progress;
     return `
-      <article class="task ${t.status === "done" ? "done" : ""}" draggable="true" data-id="${t.id}">
-        <div class="row1">
-          <button class="check" data-action="toggle" data-id="${t.id}" aria-label="Toggle complete">${t.status === "done" ? "✓" : ""}</button>
-          <div class="title" data-action="edit" data-id="${t.id}" role="button" tabindex="0">${escapeHtml(t.title)}</div>
-          <div class="actions">
-            <button data-action="edit" data-id="${t.id}" title="Edit">✎</button>
-            <button data-action="delete" data-id="${t.id}" title="Delete">✕</button>
-          </div>
+      <article class="task ${done ? "done" : ""}" draggable="true" data-id="${t.id}" data-action="select"
+        tabindex="0" aria-selected="${t.id === selectedId}">
+        <div class="r1">
+          <span class="dot" style="background:hsl(${p.color})" title="${p.label} priority"></span>
+          <span class="tid">${taskNumber(t)}</span>
+          <span class="sq" style="--h:${groupHue(t.group)}" title="${escapeHtml(t.group)}"></span>
         </div>
-        ${!compact && t.notes ? `<p class="notes">${escapeHtml(t.notes)}</p>` : ""}
-        <div class="meta">
-          ${priorityBadge(t.priority)}
-          ${t.due ? `<span>${escapeHtml(t.due)}</span>` : ""}
-          <span class="group">${escapeHtml(t.group)}</span>
+        <div class="title">${escapeHtml(t.title)}</div>
+        <div class="track"><div class="fill" style="width:${pct}%;background:hsl(${done ? "var(--ok)" : p.color})"></div></div>
+        <div class="foot">
+          <button class="check" data-action="toggle" data-id="${t.id}" aria-label="${done ? "Mark not done" : "Mark done"}">${done ? "✓" : ""}</button>
+          <span class="grp">${escapeHtml(t.group)}</span>
+          ${t.due ? `<span class="due">${escapeHtml(t.due)}</span>` : ""}
         </div>
-        ${t.progress > 0 && t.status !== "done" ? `<div class="progress"><span style="width:${t.progress}%"></span></div>` : ""}
       </article>`;
   }
 
+  function column(s, tasks) {
+    const col = tasks.filter(t => t.status === s.id);
+    // WIP counts the whole column, not just what the filters let through.
+    const total = state.tasks.filter(t => t.status === s.id).length;
+    const wip = s.wip ? `<span class="wip ${total > s.wip ? "over" : ""}" title="Work-in-progress limit">${total}/${s.wip}</span>` : "";
+    const collapse = s.id === "done"
+      ? `<button class="icon-btn" data-action="collapse-done" title="Collapse" aria-label="Collapse Complete column"><svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m9 18 6-6-6-6"/></svg></button>`
+      : "";
+    return `<section class="col" data-status="${s.id}">
+      <header>
+        <span class="dot" style="background:hsl(${s.color})"></span><h3>${s.label}</h3><span class="count">${col.length}</span>
+        <span class="spacer"></span>${wip}
+        <button class="icon-btn" data-action="add" data-status="${s.id}" title="Add to ${s.label}" aria-label="Add to ${s.label}">
+          <svg class="ic" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M5 12h14M12 5v14"/></svg>
+        </button>${collapse}
+      </header>
+      <div class="stack">
+        ${col.map(taskCard).join("") || '<div class="empty">Drop a task here</div>'}
+      </div>
+    </section>`;
+  }
+
   function renderKanban(tasks) {
-    return `<div class="kanban">${STATUSES.map(s => {
-      const col = tasks.filter(t => t.status === s.id);
-      return `<section class="col" data-status="${s.id}">
-        <header><span class="dot" style="background:hsl(${s.color})"></span><h3>${s.label}</h3><span class="count">${col.length}</span></header>
-        <div class="stack">
-          ${col.map(t => taskCard(t)).join("") || '<div class="empty">Drop a task here</div>'}
-        </div>
-      </section>`;
-    }).join("")}</div>`;
+    const open = STATUSES.filter(s => s.id !== "done");
+    const done = statusOf("done");
+    if (doneExpanded) {
+      return `<div class="board" style="grid-template-columns:repeat(${STATUSES.length}, minmax(200px, 1fr))">${STATUSES.map(s => column(s, tasks)).join("")}</div>`;
+    }
+    const doneCount = tasks.filter(t => t.status === "done").length;
+    return `<div class="board" style="grid-template-columns:repeat(${open.length}, minmax(200px, 1fr)) 46px">
+      ${open.map(s => column(s, tasks)).join("")}
+      <button class="rail col" data-status="done" data-action="expand-done" title="Show completed tasks">
+        <span class="count">${doneCount}</span><span class="dot" style="background:hsl(${done.color})"></span><span class="name">${done.label}</span>
+      </button>
+    </div>`;
   }
 
   function renderList(tasks) {
     if (!tasks.length) return emptyState();
-    return `<div class="list">${tasks.map(t => taskCard(t)).join("")}</div>`;
+    return `<div class="grid">${tasks.map(taskCard).join("")}</div>`;
   }
 
   function renderTree(tasks) {
@@ -390,9 +560,9 @@
     return groups.map(g => {
       const items = tasks.filter(t => t.group === g);
       const done = items.filter(t => t.status === "done").length;
-      return `<section class="tree-group">
-        <header>${escapeHtml(g)}<span class="count">${done}/${items.length} complete</span></header>
-        <div class="stack">${items.map(t => taskCard(t, { compact: true })).join("")}</div>
+      return `<section class="section">
+        <header><h3>${escapeHtml(g)}</h3><span class="count">${done}/${items.length} complete</span></header>
+        <div class="grid">${items.map(taskCard).join("")}</div>
       </section>`;
     }).join("");
   }
@@ -402,7 +572,10 @@
     if (!dues.length) return emptyState();
     return dues.map(d => {
       const items = tasks.filter(t => (t.due || "No date") === d);
-      return `<section class="wave"><h3>${escapeHtml(d)}</h3><div class="stack">${items.map(t => taskCard(t, { compact: true })).join("")}</div></section>`;
+      return `<section class="section">
+        <header><h3>${escapeHtml(d)}</h3><span class="count">${items.length}</span></header>
+        <div class="grid">${items.map(taskCard).join("")}</div>
+      </section>`;
     }).join("");
   }
 
@@ -410,29 +583,143 @@
     return `<div class="empty-state"><h3>A clear patch of sky</h3><p>No tasks match. Add one to get started.</p></div>`;
   }
 
+  // Open high-priority tasks, most-advanced stage first.
+  function renderAttention() {
+    const order = ["blocked", "review", "doing", "today", "backlog"];
+    const items = state.tasks
+      .filter(t => t.priority === "high" && t.status !== "done" && (!groupFilter || t.group === groupFilter))
+      .sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
+    const MAX = 4;
+    const icon = `<svg class="ic" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>`;
+    $("#attn").innerHTML = `<span class="kicker">${icon}Needs attention</span>` + (items.length
+      ? items.slice(0, MAX).map(t => `
+          <button class="pill" data-action="select" data-id="${t.id}" aria-current="${t.id === selectedId}" title="${escapeHtml(t.title)}">
+            <span class="dot" style="background:hsl(${statusOf(t.status).color})"></span>
+            <span class="tid">${taskNumber(t)}</span><span class="t">${escapeHtml(t.title)}</span>
+          </button>`).join("") +
+        (items.length > MAX ? `<span class="more">+${items.length - MAX} more</span>` : "")
+      : `<span class="none">Nothing urgent — no open high-priority tasks.</span>`);
+  }
+
+  function renderDrawer() {
+    const el = $("#drawer");
+    const t = selectedId && taskById(selectedId);
+    el.classList.toggle("is-empty", !t);
+    if (!t) {
+      el.innerHTML = `<div class="placeholder"><div><strong>No task selected</strong>Click a card to see its details here.</div></div>`;
+      return;
+    }
+    const p = PRIORITIES[t.priority];
+    const s = statusOf(t.status);
+    const done = t.status === "done";
+    const pct = done ? 100 : t.progress;
+    const stageIdx = STATUSES.indexOf(s);
+    const steps = STATUSES.map((st, i) => {
+      const cls = i < stageIdx ? "past" : i === stageIdx ? "current" : "";
+      return `<button class="step ${cls}" data-action="stage" data-status="${st.id}" ${i === stageIdx ? 'aria-current="step"' : ""}>
+        <span class="mk">${i < stageIdx ? "✓" : ""}</span><span>${st.label}</span><span class="hint">move here</span>
+      </button>`;
+    }).join("");
+    const related = state.tasks.filter(x => x.group === t.group && x.id !== t.id);
+    const relRow = x => `
+      <button class="rel" data-action="select" data-id="${x.id}">
+        <span class="tid">${taskNumber(x)}</span><span class="t">${escapeHtml(x.title)}</span>
+        <span class="st"><span class="dot" style="background:hsl(${statusOf(x.status).color})"></span>${statusOf(x.status).label}</span>
+      </button>`;
+    const relOpen = related.filter(x => x.status !== "done");
+    const relDone = related.filter(x => x.status === "done");
+
+    el.innerHTML = `
+      <div class="dhead">
+        <div class="r1">
+          <span class="tid">${taskNumber(t)}</span>
+          <span class="pill" style="background:hsl(${p.color} / .15)"><span class="dot" style="background:hsl(${p.color})"></span>${p.label} priority</span>
+          <span class="spacer"></span>
+          <button class="icon-btn" data-action="edit" data-id="${t.id}" title="Edit" aria-label="Edit task">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          <button class="icon-btn" data-action="close" title="Close (Esc)" aria-label="Close details">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <h2>${escapeHtml(t.title)}</h2>
+        <div class="r3"><span class="group" style="--h:${groupHue(t.group)}">${escapeHtml(t.group)}</span><span>${s.label}</span></div>
+      </div>
+      <div class="dbody">
+        <div class="sec">
+          <div class="facts">
+            <div class="fact"><span class="kicker">Stage</span><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:50%;background:hsl(${s.color})"></span>${s.label}</span></div>
+            <div class="fact"><span class="kicker">Due</span><span>${t.due ? escapeHtml(t.due) : `<span class="muted">No date</span>`}</span></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="meter-head"><h4>Progress</h4><span class="v" id="d-pct">${pct}%</span></div>
+          <div class="meter"><div id="d-meter" style="width:${pct}%"></div></div>
+          ${done ? "" : `<input type="range" min="0" max="100" step="5" value="${t.progress}" id="d-progress" aria-label="Progress" />`}
+        </div>
+        <div class="sec">
+          <h4>Stage</h4>
+          <div class="steps">${steps}</div>
+        </div>
+        <div class="sec">
+          <h4>Notes</h4>
+          ${t.notes ? `<p class="notes">${escapeHtml(t.notes)}</p>` : `<span class="none">No notes yet.</span>`}
+        </div>
+        <div class="sec">
+          <h4>Also in ${escapeHtml(t.group)}</h4>
+          <span class="kicker">Open</span>
+          ${relOpen.map(relRow).join("") || `<span class="none">None</span>`}
+          <span class="kicker" style="padding-top:4px">Complete</span>
+          ${relDone.map(relRow).join("") || `<span class="none">None</span>`}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" data-action="toggle" data-id="${t.id}">${done ? "Reopen" : "Mark done"}</button>
+        <button class="btn" data-action="edit" data-id="${t.id}">Edit</button>
+        <span class="spacer"></span>
+        <button class="btn btn--ghost btn--danger" data-action="delete" data-id="${t.id}">Delete</button>
+      </div>`;
+  }
+
   function render() {
+    if (selectedId && !taskById(selectedId)) selectedId = null;
     const tasks = filteredTasks();
+    const done = state.tasks.filter(t => t.status === "done").length;
+    $("#page-sub").textContent = `${state.tasks.length} tasks · ${state.tasks.length - done} open · ${done} complete`;
+    $("#crumb").textContent = groupFilter || "Tasks";
+
     const root = $("#view-root");
+    root.classList.toggle("is-board", view === "kanban");
     if (view === "kanban") root.innerHTML = renderKanban(tasks);
     else if (view === "list") root.innerHTML = renderList(tasks);
     else if (view === "tree") root.innerHTML = renderTree(tasks);
     else root.innerHTML = renderWaterflow(tasks);
 
+    renderAttention();
+    renderDrawer();
+
     // group filter options (rebuild only if changed set)
-    const groups = [...new Set(state.tasks.map(t => t.group))];
+    const groups = [...new Set(state.tasks.map(t => t.group))].sort((a, b) => a.localeCompare(b));
     const sel = $("#sel-group");
     const wanted = ["", ...groups];
-    const current = $$("option", sel).map(o => o.value);
-    if (current.join("|") !== wanted.join("|")) {
+    if ($$("option", sel).map(o => o.value).join("|") !== wanted.join("|")) {
       sel.innerHTML = `<option value="">All groups</option>` + groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
+      if (!groups.includes(groupFilter)) groupFilter = "";
       sel.value = groupFilter;
     }
   }
 
+  function select(id) {
+    selectedId = id;
+    render();
+    const card = id && $(`.task[data-id="${CSS.escape(id)}"]`);
+    if (card) card.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
   // ── modal (add / edit) ───────────────────────────────────────────────
-  function openModal(task) {
+  function openModal(task, defaults = {}) {
     const isEdit = !!task;
-    const draft = task ? { ...task } : { title: "", notes: "", status: "backlog", priority: "medium", group: "", due: "", progress: 0 };
+    const draft = task ? { ...task } : { title: "", notes: "", status: "backlog", priority: "medium", group: groupFilter, due: "", progress: 0, ...defaults };
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML = `
@@ -462,6 +749,7 @@
     $("#f-title", backdrop).focus();
 
     function close() { backdrop.remove(); }
+    backdrop.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
     backdrop.addEventListener("mousedown", e => { if (e.target === backdrop) close(); });
     $("#f-cancel", backdrop).addEventListener("click", close);
     $("#task-form", backdrop).addEventListener("submit", e => {
@@ -477,16 +765,20 @@
         due: $("#f-due", backdrop).value.trim(),
         progress: Math.max(0, Math.min(100, Number($("#f-progress", backdrop).value) || 0)),
       };
+      const newId = "t" + Date.now();
       mutate(s => {
-        if (isEdit) {
-          const t = s.tasks.find(x => x.id === task.id);
-          Object.assign(t, data);
-        } else {
-          s.tasks.push({ id: "t" + Date.now(), ...data });
-        }
+        if (isEdit) Object.assign(s.tasks.find(x => x.id === task.id), data);
+        else s.tasks.push({ id: newId, ...data });
       });
       close();
+      select(isEdit ? task.id : newId);
     });
+  }
+
+  function setStatus(t, status) {
+    t.status = status;
+    if (status === "done") t.progress = 100;
+    else if (t.progress === 100) t.progress = 92;
   }
 
   // ── event wiring ─────────────────────────────────────────────────────
@@ -501,34 +793,74 @@
   });
 
   $("#search").addEventListener("input", e => { query = e.target.value; render(); });
+  // Enter on an exact "T-n" match jumps straight to that task.
+  $("#search").addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    const hits = filteredTasks();
+    if (hits.length) select(hits[0].id);
+  });
   $("#sel-group").addEventListener("change", e => { groupFilter = e.target.value; render(); });
-  $$(".chip").forEach(chip => chip.addEventListener("click", () => {
-    const p = chip.dataset.prio;
-    if (prioFilter.has(p)) prioFilter.delete(p); else prioFilter.add(p);
-    chip.setAttribute("aria-pressed", String(prioFilter.has(p)));
-    render();
-  }));
 
   document.addEventListener("click", e => {
     const action = e.target.closest("[data-action]");
     if (!action) return;
-    const id = action.dataset.id;
-    if (action.dataset.action === "toggle") {
-      mutate(s => {
-        const t = s.tasks.find(x => x.id === id);
-        const next = t.status === "done" ? "today" : "done";
-        t.status = next;
-        t.progress = next === "done" ? 100 : Math.min(t.progress, 92);
-      });
-    } else if (action.dataset.action === "edit") {
-      openModal(state.tasks.find(x => x.id === id));
-    } else if (action.dataset.action === "delete") {
-      const t = state.tasks.find(x => x.id === id);
-      if (t && confirm(`Remove "${t.title}"?`)) mutate(s => { s.tasks = s.tasks.filter(x => x.id !== id); });
+    const id = action.dataset.id || (selectedId || "");
+    const t = taskById(id);
+    switch (action.dataset.action) {
+      case "select":
+        select(action.dataset.id === selectedId && action.classList.contains("task") ? null : action.dataset.id);
+        break;
+      case "toggle":
+        if (t) mutate(() => setStatus(t, t.status === "done" ? "today" : "done"));
+        break;
+      case "stage":
+        if (t && t.status !== action.dataset.status) mutate(() => setStatus(t, action.dataset.status));
+        break;
+      case "edit":
+        if (t) openModal(t);
+        break;
+      case "add":
+        openModal(null, { status: action.dataset.status });
+        break;
+      case "delete":
+        if (t && confirm(`Remove "${t.title}"?`)) mutate(s => { s.tasks = s.tasks.filter(x => x.id !== id); });
+        break;
+      case "close":
+        select(null);
+        break;
+      case "expand-done":
+        doneExpanded = true; render();
+        break;
+      case "collapse-done":
+        doneExpanded = false; render();
+        break;
     }
   });
 
-  // drag and drop (kanban only)
+  // Progress slider: live preview while dragging, save on release.
+  document.addEventListener("input", e => {
+    if (e.target.id !== "d-progress") return;
+    $("#d-pct").textContent = e.target.value + "%";
+    $("#d-meter").style.width = e.target.value + "%";
+  });
+  document.addEventListener("change", e => {
+    if (e.target.id !== "d-progress") return;
+    const t = taskById(selectedId);
+    if (t) mutate(() => { t.progress = Number(e.target.value); });
+  });
+
+  document.addEventListener("keydown", e => {
+    const typing = e.target.matches("input, textarea, select");
+    if (e.key === "/" && !typing) { e.preventDefault(); $("#search").focus(); return; }
+    if (e.key === "Escape" && !$(".modal-backdrop")) {
+      if (typing && e.target.id === "search") { e.target.blur(); return; }
+      if (selectedId) select(null);
+      return;
+    }
+    if (e.key === "Enter" && e.target.matches(".task")) select(e.target.dataset.id);
+  });
+
+  // drag and drop (board only)
   let draggingId = null;
   document.addEventListener("dragstart", e => {
     const card = e.target.closest(".task");
@@ -539,28 +871,27 @@
   document.addEventListener("dragend", e => {
     const card = e.target.closest(".task");
     if (card) card.classList.remove("dragging");
+    $$(".col.dragover").forEach(c => c.classList.remove("dragover"));
     draggingId = null;
   });
   document.addEventListener("dragover", e => {
     const col = e.target.closest(".col");
-    if (!col) return;
+    if (!col || !draggingId) return;
     e.preventDefault();
     col.classList.add("dragover");
   });
   document.addEventListener("dragleave", e => {
     const col = e.target.closest(".col");
-    if (col) col.classList.remove("dragover");
+    // Ignore leave events fired while moving between the column's own children.
+    if (col && !col.contains(e.relatedTarget)) col.classList.remove("dragover");
   });
   document.addEventListener("drop", e => {
     const col = e.target.closest(".col");
     if (!col || !draggingId) return;
     e.preventDefault();
     col.classList.remove("dragover");
-    const status = col.dataset.status;
-    mutate(s => {
-      const t = s.tasks.find(x => x.id === draggingId);
-      if (t) { t.status = status; if (status === "done") t.progress = 100; }
-    });
+    const t = taskById(draggingId);
+    if (t && t.status !== col.dataset.status) mutate(() => setStatus(t, col.dataset.status));
   });
 
   render();
