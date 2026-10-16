@@ -316,6 +316,51 @@
   .modal header h2 { font-size: 16px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .modal footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .modal { max-width: 560px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; padding: 0; }
+  .modal header { padding: 16px 18px 0; margin-bottom: 10px; }
+  .modal header .spacer { flex: 1; }
+  .modal form { display: flex; flex-direction: column; min-height: 0; }
+  .modal .mbody { overflow-y: auto; padding: 0 18px 4px; }
+  .modal footer { padding: 12px 18px; margin: 0; border-top: 1px solid hsl(var(--border)); align-items: center; }
+  .modal footer .hint { margin-right: auto; font: 500 11px/1 var(--mono); color: hsl(var(--muted-foreground)); }
+  .modal .title-input { height: 40px; font-size: 15px; font-weight: 600; }
+  .modal .title-input.invalid { border-color: hsl(var(--danger)); }
+  .modal .row-label { display: block; font-size: 12px; margin-bottom: 4px; color: hsl(var(--muted-foreground)); }
+  .modal .block { margin-bottom: 12px; }
+  .seg { display: flex; gap: 2px; padding: 3px; background: hsl(var(--muted)); border-radius: 8px; }
+  .seg button {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px;
+    border: 0; border-radius: 6px; background: transparent; color: hsl(var(--muted-foreground)); font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: hsl(var(--card)); color: hsl(var(--foreground)); font-weight: 600; box-shadow: var(--shadow); }
+  .seg .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .chip {
+    height: 22px; padding: 0 8px; border: 1px solid hsl(var(--border)); border-radius: 999px;
+    background: transparent; color: hsl(var(--muted-foreground)); font: inherit; font-size: 11.5px; cursor: pointer;
+  }
+  .chip:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+  .modal input[type="range"] { flex: 1; margin: 0; accent-color: hsl(var(--primary)); }
+  .modal .prog { display: flex; align-items: center; gap: 10px; }
+  .modal .prog .v { width: 40px; text-align: right; font: 600 12.5px/1 var(--mono); }
+  .modal .prog-note { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
+  /* ── Subtasks (shared by modal + drawer) ──────────────────────────── */
+  .subs { display: flex; flex-direction: column; gap: 2px; }
+  .sub { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 2px; border-radius: 6px; font-size: 13px; }
+  .sub:hover { background: hsl(var(--muted) / .7); }
+  .sub input[type="checkbox"] { flex: none; width: 15px; height: 15px; margin: 0; accent-color: hsl(var(--ok)); cursor: pointer; }
+  .sub .st-text { flex: 1; min-width: 0; word-break: break-word; }
+  .sub input.st-text { height: 26px; padding: 0 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; font: inherit; color: inherit; }
+  .sub input.st-text:focus { border-color: hsl(var(--input)); background: hsl(var(--background)); outline: none; }
+  .sub.is-done .st-text { text-decoration: line-through; color: hsl(var(--muted-foreground)); }
+  .sub .icon-btn { width: 24px; height: 24px; opacity: 0; }
+  .sub:hover .icon-btn, .sub .icon-btn:focus-visible { opacity: 1; }
+  .sub-add { display: flex; gap: 6px; margin-top: 6px; }
+  .sub-add .input { height: 30px; }
+  .subs-count { font: 600 11px/1 var(--mono); color: hsl(var(--muted-foreground)); margin-left: 6px; }
+  .task .foot .subn { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex: none; font: 500 11px/1 var(--mono); }
+  .task .foot .subn.all { color: hsl(var(--ok)); }
 
   /* ── Narrower screens: drawer floats over the board when a task is open ─ */
   @media (max-width: 1180px) {
@@ -382,7 +427,7 @@
 
   // ── storage ──────────────────────────────────────────────────────────
   const KEY = "tarmac:tasks";
-  const VERSION = 1;
+  const VERSION = 2; // v2: subtasks
 
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -406,11 +451,21 @@
 
   function seedTasks() {
     return [
-      { id: "t1", title: "Shape the first-run ritual", notes: "A tiny morning checklist.", status: "today", priority: "high", group: "Personal", due: "", progress: 40 },
+      { id: "t1", title: "Shape the first-run ritual", notes: "A tiny morning checklist.", status: "today", priority: "high", group: "Personal", due: "", progress: 40,
+        subtasks: [{ id: "s1", title: "Pick three habits", done: true }, { id: "s2", title: "Write the checklist", done: false }] },
       { id: "t2", title: "Draft the reading list", notes: "", status: "backlog", priority: "low", group: "Personal", due: "", progress: 0 },
       { id: "t3", title: "Send invoice", notes: "Attach usage report first.", status: "doing", priority: "high", group: "Admin", due: "", progress: 70 },
       { id: "t4", title: "Archive old notes", notes: "", status: "done", priority: "medium", group: "Admin", progress: 100, due: "" },
     ];
+  }
+
+  function normalizeSubtasks(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter(x => x && typeof x.title === "string" && x.title.trim()).slice(0, 100).map((x, i) => ({
+      id: x.id ? String(x.id) : "s" + Date.now() + i,
+      title: x.title.trim().slice(0, 200),
+      done: !!x.done,
+    }));
   }
 
   function normalize(raw) {
@@ -426,6 +481,7 @@
       group: typeof t.group === "string" && t.group.trim() ? t.group.trim().slice(0, 60) : "General",
       due: typeof t.due === "string" ? t.due : "",
       progress: Number.isFinite(t.progress) ? Math.max(0, Math.min(100, t.progress)) : 0,
+      subtasks: normalizeSubtasks(t.subtasks),
     }));
     return { version: VERSION, tasks };
   }
@@ -473,13 +529,27 @@
 
   const taskById = id => state.tasks.find(t => t.id === id);
   function taskNumber(t) { return "T-" + (state.tasks.indexOf(t) + 1); }
+  const newSubId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  // Subtasks, when present, drive progress; otherwise the manual value stands.
+  function progressOf(t) {
+    if (t.status === "done") return 100;
+    if (!t.subtasks.length) return t.progress;
+    return Math.round(100 * t.subtasks.filter(x => x.done).length / t.subtasks.length);
+  }
+
+  // Short due label in the same shape as the free-text examples: "Fri · Mar 28".
+  function dueLabel(d) {
+    return d.toLocaleDateString("en-US", { weekday: "short" }) + " · " + d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
 
   function filteredTasks() {
     const q = query.trim().toLowerCase();
     return state.tasks.filter(t =>
       (!groupFilter || t.group === groupFilter) &&
       (!q || t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q) ||
-        t.group.toLowerCase().includes(q) || taskNumber(t).toLowerCase() === q)
+        t.group.toLowerCase().includes(q) || taskNumber(t).toLowerCase() === q ||
+        t.subtasks.some(x => x.title.toLowerCase().includes(q)))
     );
   }
 
@@ -493,7 +563,11 @@
   function taskCard(t) {
     const p = PRIORITIES[t.priority];
     const done = t.status === "done";
-    const pct = done ? 100 : t.progress;
+    const pct = progressOf(t);
+    const subDone = t.subtasks.filter(x => x.done).length;
+    const subs = t.subtasks.length
+      ? `<span class="subn ${subDone === t.subtasks.length ? "all" : ""}" title="Subtasks">☑ ${subDone}/${t.subtasks.length}</span>`
+      : "";
     return `
       <article class="task ${done ? "done" : ""}" draggable="true" data-id="${t.id}" data-action="select"
         tabindex="0" aria-selected="${t.id === selectedId}">
@@ -507,6 +581,7 @@
         <div class="foot">
           <button class="check" data-action="toggle" data-id="${t.id}" aria-label="${done ? "Mark not done" : "Mark done"}">${done ? "✓" : ""}</button>
           <span class="grp">${escapeHtml(t.group)}</span>
+          ${subs}
           ${t.due ? `<span class="due">${escapeHtml(t.due)}</span>` : ""}
         </div>
       </article>`;
@@ -612,7 +687,17 @@
     const p = PRIORITIES[t.priority];
     const s = statusOf(t.status);
     const done = t.status === "done";
-    const pct = done ? 100 : t.progress;
+    const pct = progressOf(t);
+    const hasSubs = t.subtasks.length > 0;
+    const subDone = t.subtasks.filter(x => x.done).length;
+    const subRows = t.subtasks.map(x => `
+      <label class="sub ${x.done ? "is-done" : ""}">
+        <input type="checkbox" data-sub-toggle="${x.id}" ${x.done ? "checked" : ""} />
+        <span class="st-text">${escapeHtml(x.title)}</span>
+        <button type="button" class="icon-btn" data-action="sub-remove" data-sub="${x.id}" title="Remove subtask" aria-label="Remove subtask">
+          <svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </label>`).join("");
     const stageIdx = STATUSES.indexOf(s);
     const steps = STATUSES.map((st, i) => {
       const cls = i < stageIdx ? "past" : i === stageIdx ? "current" : "";
@@ -655,7 +740,14 @@
         <div class="sec">
           <div class="meter-head"><h4>Progress</h4><span class="v" id="d-pct">${pct}%</span></div>
           <div class="meter"><div id="d-meter" style="width:${pct}%"></div></div>
-          ${done ? "" : `<input type="range" min="0" max="100" step="5" value="${t.progress}" id="d-progress" aria-label="Progress" />`}
+          ${done || hasSubs ? "" : `<input type="range" min="0" max="100" step="5" value="${t.progress}" id="d-progress" aria-label="Progress" />`}
+        </div>
+        <div class="sec">
+          <h4>Subtasks${hasSubs ? `<span class="subs-count">${subDone}/${t.subtasks.length}</span>` : ""}</h4>
+          <div class="subs">${subRows || `<span class="none">No subtasks — progress is set by hand.</span>`}</div>
+          <form class="sub-add" id="d-sub-form">
+            <input class="input" id="d-sub-add" placeholder="Add a subtask…" autocomplete="off" maxlength="200" />
+          </form>
         </div>
         <div class="sec">
           <h4>Stage</h4>
@@ -696,7 +788,9 @@
     else root.innerHTML = renderWaterflow(tasks);
 
     renderAttention();
+    const refocus = document.activeElement && document.activeElement.id === "d-sub-add";
     renderDrawer();
+    if (refocus) $("#d-sub-add")?.focus();
 
     // group filter options (rebuild only if changed set)
     const groups = [...new Set(state.tasks.map(t => t.group))].sort((a, b) => a.localeCompare(b));
@@ -717,53 +811,203 @@
   }
 
   // ── modal (add / edit) ───────────────────────────────────────────────
+  // Draft lives in memory while the modal is open; only submit writes state.
   function openModal(task, defaults = {}) {
     const isEdit = !!task;
-    const draft = task ? { ...task } : { title: "", notes: "", status: "backlog", priority: "medium", group: groupFilter, due: "", progress: 0, ...defaults };
+    const draft = task
+      ? { ...task, subtasks: task.subtasks.map(x => ({ ...x })) }
+      : { title: "", notes: "", status: "backlog", priority: "medium", group: groupFilter, due: "", progress: 0, subtasks: [], ...defaults };
+    const groups = [...new Set(state.tasks.map(t => t.group))].sort((a, b) => a.localeCompare(b));
+    const today = new Date();
+    const plusDays = n => { const d = new Date(today); d.setDate(d.getDate() + n); return d; };
+    const nextMonday = plusDays(((8 - today.getDay()) % 7) || 7);
+    const dueChips = [["Today", today], ["Tomorrow", plusDays(1)], ["Next Mon", nextMonday], ["In a week", plusDays(7)]];
+
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true">
-        <header><h2>${isEdit ? "Edit task" : "New task"}</h2></header>
-        <form id="task-form">
-          <label class="field"><span>Title</span><input class="input" id="f-title" required value="${escapeHtml(draft.title)}" /></label>
-          <label class="field"><span>Notes</span><textarea class="textarea" id="f-notes">${escapeHtml(draft.notes)}</textarea></label>
-          <div class="grid2">
-            <label class="field"><span>Status</span>
-              <select class="select" id="f-status">${STATUSES.map(s => `<option value="${s.id}" ${draft.status === s.id ? "selected" : ""}>${s.label}</option>`).join("")}</select>
-            </label>
-            <label class="field"><span>Priority</span>
-              <select class="select" id="f-priority">${Object.keys(PRIORITIES).map(p => `<option value="${p}" ${draft.priority === p ? "selected" : ""}>${PRIORITIES[p].label}</option>`).join("")}</select>
-            </label>
-            <label class="field"><span>Group</span><input class="input" id="f-group" value="${escapeHtml(draft.group)}" placeholder="General" /></label>
-            <label class="field"><span>Due</span><input class="input" id="f-due" value="${escapeHtml(draft.due)}" placeholder="e.g. Fri · Mar 28" /></label>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+        <header>
+          <h2 id="m-title">${isEdit ? `Edit ${taskNumber(task)}` : "New task"}</h2>
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="f-x" title="Close (Esc)" aria-label="Close">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <form id="task-form" novalidate>
+          <div class="mbody">
+            <div class="block">
+              <input class="input title-input" id="f-title" maxlength="300" placeholder="What needs doing?" aria-label="Title" value="${escapeHtml(draft.title)}" />
+            </div>
+            <label class="field"><span>Notes</span><textarea class="textarea" id="f-notes" maxlength="2000" placeholder="Context, links, acceptance criteria…">${escapeHtml(draft.notes)}</textarea></label>
+
+            <div class="block">
+              <span class="row-label">Priority</span>
+              <div class="seg" id="f-priority" role="radiogroup" aria-label="Priority">
+                ${Object.keys(PRIORITIES).map(p => `<button type="button" data-priority="${p}" aria-pressed="${draft.priority === p}"><span class="dot" style="background:hsl(${PRIORITIES[p].color})"></span>${PRIORITIES[p].label}</button>`).join("")}
+              </div>
+            </div>
+
+            <div class="grid2">
+              <label class="field"><span>Stage</span>
+                <select class="select" id="f-status">${STATUSES.map(s => `<option value="${s.id}" ${draft.status === s.id ? "selected" : ""}>${s.label}</option>`).join("")}</select>
+              </label>
+              <label class="field"><span>Group</span>
+                <input class="input" id="f-group" list="f-groups" maxlength="60" value="${escapeHtml(draft.group)}" placeholder="General" autocomplete="off" />
+                <datalist id="f-groups">${groups.map(g => `<option value="${escapeHtml(g)}"></option>`).join("")}</datalist>
+              </label>
+            </div>
+
+            <div class="block">
+              <label class="field" style="margin-bottom:0"><span>Due</span><input class="input" id="f-due" value="${escapeHtml(draft.due)}" placeholder="e.g. Fri · Mar 28" /></label>
+              <div class="chips" id="f-due-chips">
+                ${dueChips.map(([label, d]) => `<button type="button" class="chip" data-due="${escapeHtml(dueLabel(d))}">${label}</button>`).join("")}
+                <button type="button" class="chip" data-due="">Clear</button>
+              </div>
+            </div>
+
+            <div class="block">
+              <span class="row-label">Subtasks <span class="subs-count" id="f-sub-count"></span></span>
+              <div class="subs" id="f-subs"></div>
+              <div class="sub-add">
+                <input class="input" id="f-sub-add" placeholder="Add a subtask and press Enter (paste a list to add many)" autocomplete="off" maxlength="200" />
+              </div>
+            </div>
+
+            <div class="block" id="f-prog-block">
+              <span class="row-label">Progress</span>
+              <div class="prog" id="f-prog"></div>
+            </div>
           </div>
-          <label class="field"><span>Progress (%)</span><input class="input" type="number" min="0" max="100" id="f-progress" value="${draft.progress}" /></label>
           <footer>
+            <span class="hint">Ctrl+Enter to save</span>
             <button type="button" class="btn btn--ghost" id="f-cancel">Cancel</button>
+            ${isEdit ? "" : `<button type="button" class="btn" id="f-another">Add &amp; new</button>`}
             <button type="submit" class="btn btn--primary">${isEdit ? "Save" : "Add task"}</button>
           </footer>
         </form>
       </div>`;
     document.body.appendChild(backdrop);
-    $("#f-title", backdrop).focus();
+    const titleEl = $("#f-title", backdrop);
+    titleEl.focus();
+
+    // Subtask list + progress row re-render together (progress depends on subtasks).
+    function renderSubs() {
+      $("#f-subs", backdrop).innerHTML = draft.subtasks.map(x => `
+        <div class="sub ${x.done ? "is-done" : ""}" data-sub="${x.id}">
+          <input type="checkbox" data-f-sub-toggle ${x.done ? "checked" : ""} aria-label="Done" />
+          <input class="st-text" data-f-sub-title value="${escapeHtml(x.title)}" maxlength="200" aria-label="Subtask" />
+          <button type="button" class="icon-btn" data-f-sub-remove title="Remove" aria-label="Remove subtask">
+            <svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>`).join("");
+      const n = draft.subtasks.length;
+      const k = draft.subtasks.filter(x => x.done).length;
+      $("#f-sub-count", backdrop).textContent = n ? `${k}/${n}` : "";
+      renderProgress();
+    }
+    function renderProgress() {
+      const live = draft.subtasks.filter(x => x.title.trim());
+      const el = $("#f-prog", backdrop);
+      if (live.length) {
+        const pct = Math.round(100 * live.filter(x => x.done).length / live.length);
+        el.innerHTML = `<span class="prog-note">${pct}% — calculated from subtasks</span>`;
+      } else {
+        el.innerHTML = `<input type="range" min="0" max="100" step="5" id="f-progress" value="${draft.progress}" aria-label="Progress" /><span class="v" id="f-progress-v">${draft.progress}%</span>`;
+      }
+    }
+    renderSubs();
+
+    function addSubs(text) {
+      const lines = text.split(/\r?\n/).map(l => l.replace(/^\s*(?:[-*•]|\[[ xX]?\]|\d+[.)])\s*/, "").trim()).filter(Boolean);
+      lines.forEach(title => draft.subtasks.push({ id: newSubId(), title: title.slice(0, 200), done: false }));
+      if (lines.length) renderSubs();
+    }
+
+    const subAdd = $("#f-sub-add", backdrop);
+    subAdd.addEventListener("keydown", e => {
+      if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      addSubs(subAdd.value);
+      subAdd.value = "";
+    });
+    subAdd.addEventListener("paste", e => {
+      const text = e.clipboardData && e.clipboardData.getData("text");
+      if (!text || !/\n/.test(text.trim())) return;
+      e.preventDefault();
+      addSubs(text);
+    });
+
+    const subsEl = $("#f-subs", backdrop);
+    subsEl.addEventListener("input", e => {
+      const row = e.target.closest(".sub");
+      const x = row && draft.subtasks.find(s => s.id === row.dataset.sub);
+      if (!x) return;
+      if (e.target.matches("[data-f-sub-title]")) { x.title = e.target.value; renderProgress(); }
+    });
+    subsEl.addEventListener("change", e => {
+      const row = e.target.closest(".sub");
+      const x = row && draft.subtasks.find(s => s.id === row.dataset.sub);
+      if (!x || !e.target.matches("[data-f-sub-toggle]")) return;
+      x.done = e.target.checked;
+      renderSubs();
+    });
+    subsEl.addEventListener("click", e => {
+      const btn = e.target.closest("[data-f-sub-remove]");
+      if (!btn) return;
+      const id = btn.closest(".sub").dataset.sub;
+      draft.subtasks = draft.subtasks.filter(s => s.id !== id);
+      renderSubs();
+      subAdd.focus();
+    });
+    // Enter inside a subtask row jumps to the add box instead of submitting.
+    subsEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && e.target.matches("[data-f-sub-title]")) { e.preventDefault(); subAdd.focus(); }
+    });
+
+    $("#f-prog", backdrop).addEventListener("input", e => {
+      if (e.target.id !== "f-progress") return;
+      draft.progress = Number(e.target.value);
+      $("#f-progress-v", backdrop).textContent = draft.progress + "%";
+    });
+
+    $("#f-priority", backdrop).addEventListener("click", e => {
+      const btn = e.target.closest("button[data-priority]");
+      if (!btn) return;
+      draft.priority = btn.dataset.priority;
+      $$("#f-priority button", backdrop).forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+    });
+    $("#f-due-chips", backdrop).addEventListener("click", e => {
+      const chip = e.target.closest(".chip");
+      if (chip) $("#f-due", backdrop).value = chip.dataset.due;
+    });
+    titleEl.addEventListener("input", () => titleEl.classList.remove("invalid"));
 
     function close() { backdrop.remove(); }
-    backdrop.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
+    backdrop.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.stopPropagation(); close(); }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(false); }
+    });
     backdrop.addEventListener("mousedown", e => { if (e.target === backdrop) close(); });
     $("#f-cancel", backdrop).addEventListener("click", close);
-    $("#task-form", backdrop).addEventListener("submit", e => {
-      e.preventDefault();
-      const title = $("#f-title", backdrop).value.trim();
-      if (!title) return;
+    $("#f-x", backdrop).addEventListener("click", close);
+    $("#f-another", backdrop)?.addEventListener("click", () => submit(true));
+    $("#task-form", backdrop).addEventListener("submit", e => { e.preventDefault(); submit(false); });
+
+    function submit(again) {
+      const title = titleEl.value.trim();
+      if (!title) { titleEl.classList.add("invalid"); titleEl.focus(); return; }
+      // Text left in the add box counts — easy to forget to press Enter.
+      if (subAdd.value.trim()) addSubs(subAdd.value);
       const data = {
         title,
         notes: $("#f-notes", backdrop).value.trim(),
         status: $("#f-status", backdrop).value,
-        priority: $("#f-priority", backdrop).value,
+        priority: draft.priority,
         group: $("#f-group", backdrop).value.trim() || "General",
         due: $("#f-due", backdrop).value.trim(),
-        progress: Math.max(0, Math.min(100, Number($("#f-progress", backdrop).value) || 0)),
+        progress: Math.max(0, Math.min(100, draft.progress || 0)),
+        subtasks: normalizeSubtasks(draft.subtasks),
       };
       const newId = "t" + Date.now();
       mutate(s => {
@@ -772,7 +1016,9 @@
       });
       close();
       select(isEdit ? task.id : newId);
-    });
+      // Keep stage/group/priority so a batch of related tasks is quick to enter.
+      if (again) openModal(null, { status: data.status, group: data.group, priority: data.priority });
+    }
   }
 
   function setStatus(t, status) {
@@ -825,6 +1071,9 @@
       case "delete":
         if (t && confirm(`Remove "${t.title}"?`)) mutate(s => { s.tasks = s.tasks.filter(x => x.id !== id); });
         break;
+      case "sub-remove":
+        if (t) mutate(() => { t.subtasks = t.subtasks.filter(x => x.id !== action.dataset.sub); });
+        break;
       case "close":
         select(null);
         break;
@@ -837,6 +1086,17 @@
     }
   });
 
+  // Drawer subtasks: tick off, or add from the inline box.
+  document.addEventListener("submit", e => {
+    if (e.target.id !== "d-sub-form") return;
+    e.preventDefault();
+    const input = $("#d-sub-add");
+    const title = input.value.trim();
+    const t = taskById(selectedId);
+    if (!t || !title) return;
+    mutate(() => { t.subtasks.push({ id: newSubId(), title: title.slice(0, 200), done: false }); });
+  });
+
   // Progress slider: live preview while dragging, save on release.
   document.addEventListener("input", e => {
     if (e.target.id !== "d-progress") return;
@@ -844,6 +1104,13 @@
     $("#d-meter").style.width = e.target.value + "%";
   });
   document.addEventListener("change", e => {
+    const subId = e.target.dataset && e.target.dataset.subToggle;
+    if (subId) {
+      const t = taskById(selectedId);
+      const x = t && t.subtasks.find(y => y.id === subId);
+      if (x) mutate(() => { x.done = e.target.checked; });
+      return;
+    }
     if (e.target.id !== "d-progress") return;
     const t = taskById(selectedId);
     if (t) mutate(() => { t.progress = Number(e.target.value); });
