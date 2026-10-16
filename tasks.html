@@ -372,6 +372,14 @@
   .subs-count { font: 600 11px/1 var(--mono); color: hsl(var(--muted-foreground)); margin-left: 6px; }
   .task .foot .subn { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; flex: none; font: 500 11px/1 var(--mono); }
   .task .foot .subn.all { color: hsl(var(--ok)); }
+  /* Card subtask preview: first few, one line each, read-only. */
+  .task .subprev { display: flex; flex-direction: column; gap: 3px; margin: -2px 0 0; padding: 0; list-style: none; font-size: 12px; color: hsl(var(--muted-foreground)); }
+  .task .subprev li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .task .subprev .box { flex: none; width: 11px; height: 11px; border: 1.5px solid hsl(var(--input)); border-radius: 3px; display: grid; place-items: center; font-size: 8px; line-height: 1; color: hsl(0 0% 100%); }
+  .task .subprev .is-done .box { background: hsl(var(--ok)); border-color: hsl(var(--ok)); }
+  .task .subprev .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .task .subprev .is-done .t { text-decoration: line-through; opacity: .75; }
+  .task .subprev .more { padding-left: 17px; font-size: 11.5px; }
 
   /* ── Narrower screens: drawer floats over the board when a task is open ─ */
   @media (max-width: 1180px) {
@@ -579,6 +587,13 @@
     const subs = t.subtasks.length
       ? `<span class="subn ${subDone === t.subtasks.length ? "all" : ""}" title="Subtasks">☑ ${subDone}/${t.subtasks.length}</span>`
       : "";
+    const SUB_PREVIEW = 3;
+    const subList = t.subtasks.length ? `
+        <ul class="subprev">
+          ${t.subtasks.slice(0, SUB_PREVIEW).map(x => `
+            <li class="${x.done ? "is-done" : ""}"><span class="box">${x.done ? "✓" : ""}</span><span class="t">${escapeHtml(x.title)}</span></li>`).join("")}
+          ${t.subtasks.length > SUB_PREVIEW ? `<li class="more">+${t.subtasks.length - SUB_PREVIEW} more</li>` : ""}
+        </ul>` : "";
     return `
       <article class="task ${done ? "done" : ""}" draggable="true" data-id="${t.id}" data-action="select"
         tabindex="0" aria-selected="${t.id === selectedId}">
@@ -587,7 +602,7 @@
           <span class="tid">${taskNumber(t)}</span>
           <span class="sq" style="--h:${groupHue(t.group)}" title="${escapeHtml(t.group)}"></span>
         </div>
-        <div class="title">${escapeHtml(t.title)}</div>
+        <div class="title">${escapeHtml(t.title)}</div>${subList}
         <div class="track"><div class="fill" style="width:${pct}%;background:hsl(${done ? "var(--ok)" : p.color})"></div></div>
         <div class="foot">
           <button class="check" data-action="toggle" data-id="${t.id}" aria-label="${done ? "Mark not done" : "Mark done"}">${done ? "✓" : ""}</button>
