@@ -245,6 +245,8 @@
   .col > header .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
   .col > header .icon-btn:hover { background: hsl(var(--card)); }
   .col .stack { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 7px; padding: 0 7px 10px; }
+  .col.wide .stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
+  .col.wide .empty { grid-column: 1 / -1; }
   .col .empty { border: 1px dashed hsl(var(--border)); border-radius: 9px; text-align: center; color: hsl(var(--muted-foreground)); font-size: 12px; padding: 22px 8px; }
   .rail {
     display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0;
@@ -453,8 +455,9 @@
   }
 
   // wip: soft limit shown in the column header; null = no limit.
+  // span: board width in columns; its cards flow into that many lanes.
   const STATUSES = [
-    { id: "backlog", label: "Backlog", color: "220 43% 44%", wip: null },
+    { id: "backlog", label: "Backlog", color: "220 43% 44%", wip: null, span: 2 },
     { id: "today", label: "Today", color: "14 82% 61%", wip: 5 },
     { id: "doing", label: "In motion", color: "161 45% 43%", wip: 3 },
     { id: "blocked", label: "Blocked", color: "2 68% 52%", wip: null },
@@ -621,7 +624,7 @@
     const collapse = s.id === "done"
       ? `<button class="icon-btn" data-action="collapse-done" title="Collapse" aria-label="Collapse Complete column"><svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m9 18 6-6-6-6"/></svg></button>`
       : "";
-    return `<section class="col" data-status="${s.id}">
+    return `<section class="col${s.span > 1 ? " wide" : ""}" data-status="${s.id}">
       <header>
         <span class="dot" style="background:hsl(${s.color})"></span><h3>${s.label}</h3><span class="count">${col.length}</span>
         <span class="spacer"></span>${wip}
@@ -635,14 +638,20 @@
     </section>`;
   }
 
+  // Grid track per stage; wide stages get proportionally more room.
+  function trackOf(s) {
+    const n = s.span || 1;
+    return `minmax(${200 * n}px, ${n}fr)`;
+  }
+
   function renderKanban(tasks) {
     const open = STATUSES.filter(s => s.id !== "done");
     const done = statusOf("done");
     if (doneExpanded) {
-      return `<div class="board" style="grid-template-columns:repeat(${STATUSES.length}, minmax(200px, 1fr))">${STATUSES.map(s => column(s, tasks)).join("")}</div>`;
+      return `<div class="board" style="grid-template-columns:${STATUSES.map(trackOf).join(" ")}">${STATUSES.map(s => column(s, tasks)).join("")}</div>`;
     }
     const doneCount = tasks.filter(t => t.status === "done").length;
-    return `<div class="board" style="grid-template-columns:repeat(${open.length}, minmax(200px, 1fr)) 46px">
+    return `<div class="board" style="grid-template-columns:${open.map(trackOf).join(" ")} 46px">
       ${open.map(s => column(s, tasks)).join("")}
       <button class="rail col" data-status="done" data-action="expand-done" title="Show completed tasks">
         <span class="count">${doneCount}</span><span class="dot" style="background:hsl(${done.color})"></span><span class="name">${done.label}</span>
