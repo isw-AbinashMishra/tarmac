@@ -558,6 +558,9 @@
     return Math.round(100 * t.subtasks.filter(x => x.done).length / t.subtasks.length);
   }
 
+  // Display order: open subtasks first, completed ones sink to the end (stable).
+  const subsInOrder = list => [...list.filter(x => !x.done), ...list.filter(x => x.done)];
+
   // Short due label in the same shape as the free-text examples: "Fri · Mar 28".
   function dueLabel(d) {
     return d.toLocaleDateString("en-US", { weekday: "short" }) + " · " + d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -591,7 +594,7 @@
     const SUB_PREVIEW = 3;
     const subList = t.subtasks.length ? `
         <ul class="subprev">
-          ${t.subtasks.slice(0, SUB_PREVIEW).map(x => `
+          ${subsInOrder(t.subtasks).slice(0, SUB_PREVIEW).map(x => `
             <li class="${x.done ? "is-done" : ""}"><span class="box">${x.done ? "✓" : ""}</span><span class="t">${escapeHtml(x.title)}</span></li>`).join("")}
           ${t.subtasks.length > SUB_PREVIEW ? `<li class="more">+${t.subtasks.length - SUB_PREVIEW} more</li>` : ""}
         </ul>` : "";
@@ -723,7 +726,7 @@
     const pct = progressOf(t);
     const hasSubs = t.subtasks.length > 0;
     const subDone = t.subtasks.filter(x => x.done).length;
-    const subRows = t.subtasks.map(x => `
+    const subRows = subsInOrder(t.subtasks).map(x => `
       <label class="sub ${x.done ? "is-done" : ""}">
         <input type="checkbox" data-sub-toggle="${x.id}" ${x.done ? "checked" : ""} />
         <span class="st-text">${escapeHtml(x.title)}</span>
@@ -926,7 +929,7 @@
 
     // Subtask list + progress row re-render together (progress depends on subtasks).
     function renderSubs() {
-      $("#f-subs", backdrop).innerHTML = draft.subtasks.map(x => `
+      $("#f-subs", backdrop).innerHTML = subsInOrder(draft.subtasks).map(x => `
         <div class="sub ${x.done ? "is-done" : ""}" data-sub="${x.id}">
           <input type="checkbox" data-f-sub-toggle ${x.done ? "checked" : ""} aria-label="Done" />
           <input class="st-text" data-f-sub-title value="${escapeHtml(x.title)}" maxlength="200" aria-label="Subtask" />
