@@ -594,6 +594,20 @@
       font-size: 13px; border-radius: var(--radius); }
     .cal-cell.other { color: hsl(var(--muted-foreground)); opacity: .45; }
     .cal-cell.today { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-weight: 700; }
+    .cal-cell.release { position: relative; cursor: help; }
+    .cal-cell.release::after { content: ""; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+      width: 5px; height: 5px; border-radius: 50%; background: hsl(var(--warn)); }
+
+    /* --- REM releases + achievements -------------------------------------- */
+    .rel-group + .rel-group { margin-top: 14px; }
+    .rel-head { font-size: 12px; font-weight: 700; margin: 0 0 6px; }
+    ul.list li.rel-row { padding-top: 6px; padding-bottom: 6px; }
+    .rel-env--prod { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .35); background: hsl(var(--danger) / .12); }
+    .rel-env--scrum { color: hsl(var(--ok)); border-color: hsl(var(--ok) / .35); background: hsl(var(--ok) / .12); }
+    .ach-year { min-width: 48px; }
+    li.ach-month { list-style: none; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+      color: hsl(var(--muted-foreground)); padding: 10px 2px 2px; }
+    li.ach-month:first-child { padding-top: 0; }
 
     /* --- dev quote of the day ------------------------------------------------ */
     .quote-text { font-size: 16px; line-height: 1.5; font-style: italic; margin: 4px 0 10px 0; }
@@ -698,6 +712,7 @@
           </select>
         </label>
         <a class="btn" id="btn-tasks" href="tasks.html" title="Open task board">Tasks</a>
+        <a class="btn" id="btn-releases" href="releases.html" title="REM release calendar, sprints, dev days">Releases</a>
         <button class="btn btn--icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme">🌓</button>
         <button class="btn" id="btn-arrange" title="Drag cards to reorder" aria-pressed="false">Arrange</button>
         <button class="btn" id="btn-export" title="Download a JSON backup">Export</button>
@@ -823,14 +838,15 @@
     //    Boot + timers          grep  Boot + timers
     //
     //  To edit an APPLET, grep its id — e.g.   id: "deepwork"
-    //    ids: clock calendar quota todo deepwork tally capacity workday standup blockers snippets
-    //         decisions inprogress bookmarks water walks quotes
+    //    ids: clock calendar releases quota todo deepwork tally capacity workday standup blockers snippets
+    //         decisions achievements inprogress bookmarks water walks quotes
     //  Applet-specific helpers (grep the function name):
     //    quota:     computeQuota editQuota        todo:      moveTodo wireTodoDrag editTodo openTodoModal
     //    deepwork:  timerStart/Pause/Reset/Complete       workday: formatHMS
     //    standup:   openStandupCopy               snippets:  editSnippet
     //    decisions: addDecision                   bookmarks: bookmarkTile linkFields
     //    inprogress: editInProgress moveInProgress wireInProgressDrag
+    //    releases:  readReleases countdownBadge (data lives in releases.html)   achievements: editAchievement achievementsMarkdown
     //    quotes:    quoteOfDay hashStr
     //
     //  See CLAUDE.md for the applet contract, invariants, and how to add one.
@@ -852,8 +868,8 @@
       // Which applets are shown, and in what order (top-to-bottom).
       applets: {
         order: [
-          "clock", "calendar", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo",
-          "standup", "blockers", "bookmarks", "snippets", "decisions", "inprogress", "quotes"
+          "clock", "calendar", "releases", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity", "todo",
+          "standup", "blockers", "bookmarks", "snippets", "decisions", "achievements", "inprogress", "quotes"
         ],
         disabled: []   // e.g. ["decisions"] to hide the decision log
       },
@@ -904,6 +920,9 @@
       // ── Applet: inprogress (things you're validating, with a confidence level) ──
       inprogress: [],
 
+      // ── Applet: achievements (yearly brag log for the appraisal) ─────────
+      achievements: [],
+
       // ── Applet: capacity (split your working day across areas, by %) ────
       capacity: {
         hours: 9,               // length of a working day, in hours
@@ -923,7 +942,7 @@
     };
 
     const STORAGE_KEY = "tarmac:state";
-    const STATE_VERSION = 8;
+    const STATE_VERSION = 9;
     const DAILY_KEEP_DAYS = 30;
 
     // ======================================================================
@@ -1164,6 +1183,8 @@
           level: clampInt(p.level, 1, 5, 3), notes: String(p.notes || "")
         })) : [],
 
+        achievements: Array.isArray(s.achievements) ? s.achievements.map(normalizeAchievement) : [],
+
         snippets: Array.isArray(s.snippets) ? s.snippets.map(x => ({
           id: x.id || uid(), label: String(x.label || ""),
           snippet: String(x.snippet || ""), tag: String(x.tag || "")
@@ -1181,6 +1202,15 @@
         daily: normalizeDaily(s.daily)
       };
       return out;
+    }
+    const isDateKey = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+    function normalizeAchievement(a) {
+      a = a || {};
+      return {
+        id: a.id || uid(), date: isDateKey(a.date) ? a.date : todayKey(),
+        title: String(a.title || ""), impact: String(a.impact || ""),
+        tag: String(a.tag || ""), url: String(a.url || "")
+      };
     }
     function clampInt(v, lo, hi, dflt) {
       v = Number(v);
@@ -1225,6 +1255,7 @@
         snippets: CONFIG.snippets,
         decisions: CONFIG.decisions,
         inprogress: CONFIG.inprogress,
+        achievements: CONFIG.achievements,
         deepwork: CONFIG.deepwork,
         daily: {}
       });
@@ -1613,20 +1644,90 @@
         const total = daysInMonthOf(y, m);
         const prevTotal = daysInMonthOf(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
         const todayStr = todayKey();
+        const releasesOn = {};   // "YYYY-MM-DD" -> ["26.4 Prod available (prod)", …], for the dots + tooltip
+        readReleases().forEach(r => {
+          (releasesOn[r.date] = releasesOn[r.date] || []).push(releaseLabel(r) + (r.env ? ` (${r.env})` : ""));
+        });
 
         let cells = dows.map(d => `<div class="cal-dow">${d}</div>`).join("");
         for (let i = leading - 1; i >= 0; i--) {
           cells += `<div class="cal-cell other">${prevTotal - i}</div>`;
         }
         for (let d = 1; d <= total; d++) {
-          const isToday = dateKey(new Date(y, m, d)) === todayStr;
-          cells += `<div class="cal-cell${isToday ? " today" : ""}">${d}</div>`;
+          const key = dateKey(new Date(y, m, d));
+          const rel = releasesOn[key];
+          cells += `<div class="cal-cell${key === todayStr ? " today" : ""}${rel ? " release" : ""}"${rel ? ` title="${escapeHtml(rel.join(", "))}"` : ""}>${d}</div>`;
         }
         const trailing = (7 - ((leading + total) % 7)) % 7;
         for (let d = 1; d <= trailing; d++) {
           cells += `<div class="cal-cell other">${d}</div>`;
         }
         grid.innerHTML = cells;
+      }
+    });
+
+    // ---- Applet: REM releases (read-only summary of releases.html) -----
+    // releases.html owns the data under its own key (like tasks.html); this
+    // card and the Calendar dots only read it, and refresh on a "storage"
+    // event when that page saves. Next RELEASES_SHOWN releases, grouped.
+    const RELEASES_KEY = "tarmac:releases";
+    const RELEASES_SHOWN = 2;
+    function readReleases() {
+      try {
+        const r = JSON.parse(localStorage.getItem(RELEASES_KEY) || "null");
+        return (r && Array.isArray(r.milestones) ? r.milestones : [])
+          .filter(m => m && /^\d{4}-\d{2}-\d{2}$/.test(m.date));
+      } catch (e) { return []; }
+    }
+    const parseDateKey = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+    const daysUntil = (k) => Math.round((parseDateKey(k) - startOfDay(new Date())) / DAY_MS);
+    const releaseLabel = (r) => [r.release, r.name].filter(Boolean).join(" ");
+    function countdownBadge(k) {
+      const n = daysUntil(k);
+      if (n === 0) return `<span class="badge badge--ok">today</span>`;
+      return `<span class="badge${n <= 3 ? " badge--warn" : ""}">in ${n}d</span>`;
+    }
+    registerApplet({
+      id: "releases", title: "REM releases",
+      mount(card) {
+        const { head } = parts(card);
+        head.innerHTML = `<a class="btn btn--sm" href="releases.html" title="Release calendar, sprints, time off and dev days">Open ↗</a>`;
+        window.addEventListener("storage", e => { if (e.key === RELEASES_KEY) { renderApplet("releases"); renderApplet("calendar"); } });
+      },
+      render(card) {
+        const { sub, body } = parts(card);
+        const today = todayKey();
+        const upcoming = readReleases().filter(r => r.date >= today)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const next = upcoming[0];
+        sub.textContent = next ? `next ${daysUntil(next.date) === 0 ? "today" : "in " + daysUntil(next.date) + "d"}` : "";
+        if (!upcoming.length) {
+          body.innerHTML = `<p class="empty">No upcoming milestones. <a href="releases.html">Open the release calendar</a> to load or add them.</p>`;
+          return;
+        }
+        const groups = new Map();   // release -> milestones, in order of each release's next milestone
+        upcoming.forEach(r => {
+          const k = r.release || "Other";
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k).push(r);
+        });
+        body.innerHTML = [...groups].slice(0, RELEASES_SHOWN).map(([rel, list]) => {
+          const cat = (list.find(r => r.category) || {}).category;
+          return `
+            <div class="rel-group">
+              <h3 class="rel-head">${escapeHtml(rel)}${cat ? ` <span class="muted">· ${cat === "Dot" ? "Dot release" : "Major"}</span>` : ""}</h3>
+              <ul class="list">${list.map(r => `
+                <li class="item rel-row"${r.notes ? ` title="${escapeHtml(r.notes)}"` : ""}>
+                  <div class="item-head">
+                    <span class="title">${escapeHtml(r.name || r.release)}</span>
+                    ${r.env ? `<span class="badge tag rel-env--${escapeHtml(r.env)}">${escapeHtml(r.env)}</span>` : ""}
+                    <div class="spacer"></div>
+                    <span class="meta">${escapeHtml(parseDateKey(r.date).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }))}</span>
+                    ${countdownBadge(r.date)}
+                  </div>
+                </li>`).join("")}</ul>
+            </div>`;
+        }).join("");
       }
     });
 
@@ -1879,7 +1980,39 @@
 
     // ---- Applet: Deep-work timer ----------------------------------------
     // Timer runtime is transient (ui.timer); only per-day counts persist.
+    // Alarm: a Web Audio chime (offline, no asset) + a desktop notification when
+    // permitted. Permission is asked on "Start focus" since it needs a user gesture.
+    function timerAskNotify() {
+      if ("Notification" in window && Notification.permission === "default") {
+        try { Notification.requestPermission(); } catch { /* unsupported here */ }
+      }
+    }
+    function timerChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 0.35, 0.7].forEach((at, i) => {
+          const osc = ctx.createOscillator(), gain = ctx.createGain();
+          osc.type = "sine"; osc.frequency.value = i === 2 ? 1046.5 : 880;
+          gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+          gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + at + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.6);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(ctx.currentTime + at); osc.stop(ctx.currentTime + at + 0.65);
+        });
+        setTimeout(() => ctx.close(), 1500);
+      } catch { /* no audio available */ }
+    }
+    function timerAlarm(title, body) {
+      timerChime();
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          const n = new Notification(title, { body, tag: "tarmac-deepwork", requireInteraction: true });
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch { /* notifications blocked in this context */ }
+      }
+    }
     function timerStart() {
+      timerAskNotify();
       const t = ui.timer;
       if (t.phase === "idle") { t.phase = "focus"; t.remaining = state.deepwork.focusMin * 60; }
       t.running = true; t.endAt = Date.now() + t.remaining * 1000;
@@ -1899,10 +2032,12 @@
       if (t.phase === "focus") {
         mutate(s => { day("deepwork").blocks += 1; }, { only: ["deepwork"] });
         toast("Focus block complete 🎉  Break time.", "ok");
+        timerAlarm("Focus block complete", `Take a ${state.deepwork.breakMin}-minute break.`);
         t.phase = "break"; t.remaining = state.deepwork.breakMin * 60;
         t.endAt = Date.now() + t.remaining * 1000; t.running = true;
       } else { // break finished
         toast("Break over — ready for another block.", "ok");
+        timerAlarm("Break over", "Ready for another focus block.");
         ui.timer = { phase: "idle", remaining: state.deepwork.focusMin * 60, running: false, endAt: 0 };
       }
       renderApplet("deepwork");
@@ -2238,6 +2373,116 @@
       if (!vals || !vals.decision.trim()) return;
       mutate(s => { s.decisions.push({ id: uid(), date: vals.date || todayKey(), decision: vals.decision.trim(), why: vals.why.trim() }); }, { only: ["decisions"] });
     }
+
+    // ---- Applet: Achievements (yearly brag log for the appraisal) -------
+    // One list for all years; the viewed year is transient UI state on the
+    // card. "Copy" exports the viewed year as Markdown, grouped by month.
+    function achievementsFor(year) {
+      return state.achievements.filter(a => a.date.startsWith(year + "-"))
+        .sort((a, b) => b.date.localeCompare(a.date)); // newest first
+    }
+    const monthLabel = (k) => parseDateKey(k).toLocaleDateString([], { month: "long" });
+    function achievementsMarkdown(year) {
+      const items = achievementsFor(year).slice().reverse(); // chronological reads better in a review
+      let out = `## Achievements ${year}\n`, month = "";
+      items.forEach(a => {
+        const m = monthLabel(a.date);
+        if (m !== month) { month = m; out += `\n### ${m}\n`; }
+        out += `- **${a.title}** (${a.date})` + (a.tag ? ` [${a.tag}]` : "") +
+               (a.impact ? ` — ${a.impact.replace(/\s*\n\s*/g, " ")}` : "") + (a.url ? ` <${a.url}>` : "") + "\n";
+      });
+      return out;
+    }
+    async function editAchievement(a) {
+      const isNew = !a; a = a || {};
+      const vals = await openDialog(isNew ? "Log an achievement" : "Edit achievement", [
+        { key: "title", label: "What did you achieve?", value: a.title || "", placeholder: "e.g. Shipped rem-mcp read tools" },
+        { key: "impact", label: "Impact / evidence", type: "textarea", rows: 3, value: a.impact || "",
+          placeholder: "Who benefited, what changed, numbers if you have them" },
+        { key: "date", label: "Date", type: "date", value: a.date || todayKey() },
+        { key: "tag", label: "Tag (optional)", value: a.tag || "", placeholder: "delivery, quality, mentoring…" },
+        { key: "url", label: "Link (optional)", value: a.url || "", placeholder: "PR, Jira, Confluence, kudos thread" }
+      ], isNew ? "Add" : "Save");
+      if (!vals || !vals.title.trim()) return;
+      const clean = { title: vals.title.trim(), impact: vals.impact.trim(), date: vals.date, tag: vals.tag.trim(), url: vals.url.trim() };
+      mutate(s => {
+        if (isNew) s.achievements.push(normalizeAchievement(clean));
+        else {
+          const t = s.achievements.find(x => x.id === a.id);
+          if (t) Object.assign(t, normalizeAchievement({ ...clean, id: t.id }));
+        }
+      }, { only: ["achievements"] });
+    }
+    registerApplet({
+      id: "achievements", title: "Achievements", wide: true,
+      mount(card) {
+        const { head, body } = parts(card);
+        card.dataset.year = new Date().getFullYear();
+        head.innerHTML = `
+          <div class="cal-nav">
+            <button class="btn btn--ghost btn--sm btn--icon" data-act="prev" title="Previous year">◀</button>
+            <span class="cal-label ach-year" data-year-label></span>
+            <button class="btn btn--ghost btn--sm btn--icon" data-act="next" title="Next year">▶</button>
+          </div>
+          <button class="btn btn--ghost btn--sm" data-act="copy" title="Copy this year as Markdown for your appraisal">Copy</button>
+          <button class="btn btn--sm" data-act="add">+ Add</button>`;
+        head.addEventListener("click", e => {
+          const btn = e.target.closest("[data-act]"); if (!btn) return;
+          const act = btn.dataset.act, year = +card.dataset.year;
+          if (act === "add") editAchievement(null);
+          else if (act === "prev" || act === "next") {
+            card.dataset.year = year + (act === "prev" ? -1 : 1);
+            this.render(card);
+          } else if (act === "copy") {
+            if (!achievementsFor(year).length) { toast(`Nothing logged for ${year} yet.`, "warn"); return; }
+            copyText(achievementsMarkdown(year)).then(ok =>
+              toast(ok ? `Copied ${year} achievements as Markdown.` : "Copy failed.", ok ? "ok" : "danger"));
+          }
+        });
+        body.innerHTML = `
+          <div class="filter-row"><input class="input" data-filter placeholder="Search achievements…" aria-label="Search achievements" /></div>
+          <div data-list></div>`;
+        body.querySelector("[data-filter]").addEventListener("input", () => this.render(card));
+        body.querySelector("[data-list]").addEventListener("click", e => {
+          const li = e.target.closest("li.item"); if (!li) return;
+          const a = state.achievements.find(x => x.id === li.dataset.id); if (!a) return;
+          if (e.target.closest("[data-act=edit]")) editAchievement(a);
+          else if (e.target.closest("[data-act=del]") && confirm(`Delete “${a.title}”?`))
+            mutate(s => { s.achievements = s.achievements.filter(x => x.id !== a.id); }, { only: ["achievements"] });
+        });
+      },
+      render(card) {
+        const { head, sub, body } = parts(card);
+        const year = +card.dataset.year;
+        head.querySelector("[data-year-label]").textContent = year;
+        const all = achievementsFor(year);
+        sub.textContent = all.length ? `${all.length} logged` : "";
+        const q = (body.querySelector("[data-filter]").value || "").toLowerCase();
+        const list = body.querySelector("[data-list]");
+        const items = all.filter(a => !q || (a.date + " " + a.title + " " + a.impact + " " + a.tag).toLowerCase().includes(q));
+        if (!all.length) { list.innerHTML = `<p class="empty">Nothing logged for ${year} yet. Capture wins as they happen with “+ Add”.</p>`; return; }
+        if (!items.length) { list.innerHTML = `<p class="empty">No matches for “${escapeHtml(q)}”.</p>`; return; }
+        let month = "";
+        list.innerHTML = `<ul class="list">` + items.map(a => {
+          const m = monthLabel(a.date);
+          const header = m !== month ? `<li class="ach-month">${escapeHtml(m)}</li>` : "";
+          month = m;
+          return header + `
+            <li class="item" data-id="${a.id}">
+              <div class="item-head">
+                ${a.url ? `<a class="title" href="${escapeHtml(safeUrl(a.url))}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a>`
+                        : `<span class="title">${escapeHtml(a.title)}</span>`}
+                ${a.tag ? `<span class="badge tag">${escapeHtml(a.tag)}</span>` : ""}
+                <div class="spacer"></div>
+                <span class="meta">${escapeHtml(a.date)}</span>
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="edit" title="Edit">✏️</button>
+                <button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">🗑️</button>
+              </div>
+              ${a.impact ? `<div class="body muted">${escapeHtml(a.impact)}</div>` : ""}
+            </li>`;
+        }).join("") + `</ul>`;
+      }
+    });
 
     // ---- Applet: In progress (long-running work items + confidence) -----
     // Not day-scoped: items live until manually deleted (there's no "retire"

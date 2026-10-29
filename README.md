@@ -14,6 +14,7 @@ CSS. Works opened directly via `file://`.
 | File                          | What it is                                                        |
 | ----------------------------- | ---------------------------------------------------------------- |
 | `index.html`                  | The whole app (inline CSS + JS). This is all you need to run.     |
+| `releases.html`               | REM release calendar page: milestones, sprints, time off and a dev-days calculator. Own storage key (`tarmac:releases`) and own Export/Import. |
 | `README.md`                   | This file.                                                       |
 | `tarmac-config.example.json`  | A filled-in example you can **Import** to see the dashboard populated, or use as a template for your own backup JSON. |
 
@@ -58,8 +59,25 @@ Seventeen cards, all pure local state:
 | `bookmarks` | Bookmarks                  | Grouped links with optional emoji/icon; editable in-app + config.|
 | `snippets`  | Snippet / command stash    | `{label, snippet, tag}`; click-to-copy, text filter.            |
 | `decisions` | Decision log (light ADR)   | `{date, decision, why}`; newest first, searchable.              |
+| `releases`  | REM releases (summary)     | Read-only: the next 2 releases from **releases.html** with countdowns (amber ≤3 days). Milestone dates also show as dots on the Calendar card (hover for names). **Open ↗** goes to the full page. |
+| `achievements` | Achievements (appraisal log) | `{date, title, impact, tag, url}`; grouped by month, one year at a time (◀ ▶), searchable. **Copy** puts the viewed year on the clipboard as Markdown, ready to paste into a self-review. |
 | `inprogress`| In progress                | `{title, level, notes}`; long-running items you're validating — click a star to set confidence 1-5, delete when it's done (no separate "retire" state). |
 | `quotes`    | Dev quote of the day       | Static offline set of programming quotes; one shown per day (deterministic, no network call). |
+
+### Release calendar page (`releases.html`)
+
+Open with **Releases** in the toolbar or **Open ↗** on the REM releases card. Ships pre-loaded with the
+2026 and 2027 LA Release Calendar (release milestones + sprints); it saves under `tarmac:releases`, separate
+from the dashboard state, so back it up with the page's own **Export**.
+
+- **Dev days calculator**: pick a milestone (defaults to the next REM code freeze). It counts weekdays from
+  today (or a chosen date) up to that day, subtracts public holidays and your time off, then multiplies by
+  your REM allocation. The allocation and hours/day default to the "REM – Dev" slice of the Capacity card;
+  type over them to override. A per-sprint split of the same window sits under **Per-sprint split**.
+- **Time off & holidays**: add single days or ranges, tagged as your leave or a public holiday. Every
+  working-day count on the page uses them.
+- **Releases**: one card per release with its milestones and countdowns. Hover a milestone to edit or delete it,
+  or use **+ Milestone** to add one.
 
 ---
 
@@ -101,8 +119,8 @@ Also config-driven via `state.applets`:
 
 ```js
 applets: {
-  order:    ["clock", "calendar", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity",
-             "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "inprogress", "quotes"],
+  order:    ["clock", "calendar", "releases", "workday", "quota", "deepwork", "tally", "water", "walks", "capacity",
+             "todo", "standup", "blockers", "bookmarks", "snippets", "decisions", "achievements", "inprogress", "quotes"],
   disabled: []            // e.g. ["decisions"] to hide the decision log
 }
 ```
