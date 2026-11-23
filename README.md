@@ -15,7 +15,7 @@ CSS. Works opened directly via `file://`.
 | ----------------------------- | ---------------------------------------------------------------- |
 | `index.html`                  | The whole app (inline CSS + JS). This is all you need to run.     |
 | `releases.html`               | REM release calendar page: milestones, sprints, time off and a dev-days calculator. Own storage key (`tarmac:releases`) and own Export/Import. |
-| `initiatives.html`            | Initiatives whiteboard: stickies grouped in zones, arrows for what feeds what, and notes. Each sticky holds details, a next step, a horizon, a Jira epic and links. Own storage key (`tarmac:initiatives`) and own Export/Import. |
+| `initiatives.html`            | Initiatives whiteboard: stickies grouped in zones, arrows for what feeds what, and notes. Each sticky holds details, a next step, a status, a Jira epic and links, and drags to reorder or change zone. Own storage key (`tarmac:initiatives`) and own Export/Import. |
 | `README.md`                   | This file.                                                       |
 | `tarmac-config.example.json`  | A filled-in example you can **Import** to see the dashboard populated, or use as a template for your own backup JSON. |
 
