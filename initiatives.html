@@ -17,8 +17,8 @@
   }
 
   /* ── Design tokens: same palette as index.html / tasks.html so the pages
-     feel like one app. Theme (light/dark/glass) is read from tarmac:state,
-     this page never writes to that key. ───────────────────────────────── */
+     feel like one app. The page has its own theme choice (light by default);
+     "match" reads the dashboard theme from tarmac:state, never writes it. ───────────────────────────────── */
   :root {
     --background: 240 5% 97%;
     --foreground: 0 0% 4%;
@@ -91,7 +91,9 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: hsl(var(--background));
+    /* The dotted whiteboard surface covers the whole page. */
+    background-color: hsl(var(--card));
+    background-image: radial-gradient(hsl(var(--input)) 1.1px, transparent 1.2px); background-size: 18px 18px;
     color: hsl(var(--foreground));
     font: 14px/1.5 "Outfit", "Aptos", ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -156,20 +158,22 @@
   .hint { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
 
   .wb {
-    position: relative; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 14px; padding: 16px;
-    border: 1px solid hsl(var(--border)); border-radius: var(--radius);
-    background-color: hsl(var(--card));
-    background-image: radial-gradient(hsl(var(--input)) 1.1px, transparent 1.2px); background-size: 18px 18px;
+    position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px;
   }
   .wb svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: visible; }
   .wb svg .ln { fill: none; stroke: hsl(var(--ink)); stroke-width: 1.7; stroke-linecap: round; }
   .wb svg .hd { fill: hsl(var(--ink)); }
   .zone { border: 1.5px dashed hsl(var(--ink)); border-radius: 12px; padding: 8px 12px 14px; min-width: 0; display: grid; gap: 8px; align-content: start; }
-  .zone.s2 { grid-column: span 2; } .zone.s3 { grid-column: span 3; } .zone.s4 { grid-column: span 4; } .zone.s5 { grid-column: span 5; }
+  /* Zone width: sN spans N board columns (2n+1 columns hold n stickies side by side), full takes the whole row. */
+  .zone.s3 { grid-column: span 3; } .zone.s5 { grid-column: span 5; } .zone.s7 { grid-column: span 7; }
+  .zone.s9 { grid-column: span 9; } .zone.s11 { grid-column: span 11; } .zone.s12 { grid-column: span 12; }
+  .zone.full { grid-column: 1 / -1; }
+  .zw { font: inherit; font-size: 11.5px; font-weight: 400; border: 1px solid hsl(var(--input)); border-radius: 6px; background: hsl(var(--card)); color: hsl(var(--card-foreground)); padding: 1px 2px; opacity: 0; }
+  .zone:hover .zw, .zw:focus-visible { opacity: 1; }
   .zl { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: hsl(var(--muted-foreground)); }
   .zl .btn { opacity: 0; }
   .zone:hover .zl .btn, .zl .btn:focus-visible { opacity: 1; }
-  .stickies { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px 32px; }
+  .stickies { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: 18px 32px; }
   .sticky {
     position: relative; z-index: 1; max-width: 340px; min-height: 160px; padding: 13px 15px 14px; border-radius: 3px;
     display: grid; gap: 8px; align-content: start; min-width: 0; font-size: 13px; color: hsl(var(--foreground));
@@ -189,7 +193,25 @@
   .links a { font-size: 12.5px; font-weight: 600; color: inherit; overflow-wrap: anywhere; }
   .snote { font: inherit; font-size: 13px; width: 100%; min-width: 0; border: 0; border-bottom: 1px dashed hsl(var(--ink)); background: none; color: inherit; padding: 1px 0; }
   .sh { font: inherit; font-size: 12.5px; justify-self: start; max-width: 100%; border: 1px solid hsl(var(--ink)); border-radius: 99px; background: hsl(var(--card)); color: hsl(var(--card-foreground)); padding: 1px 6px; }
-  .sh.now { border-color: hsl(var(--primary)); font-weight: 700; }
+  /* Status colours: each status sets a hue + saturation; the pill gets a tinted fill, a matching border and readable text. */
+  .sh {
+    --hs: 240 5%; --tl: 30%;
+    font-weight: 600; border-color: hsl(var(--hs) 50%); color: hsl(var(--hs) var(--tl));
+    background: linear-gradient(hsl(var(--hs) 50% / .18), hsl(var(--hs) 50% / .18)), hsl(var(--card));
+  }
+  html.dark .sh { --tl: 80%; }
+  .sh.planned { --hs: 265 65%; }
+  .sh.progress { --hs: 210 85%; }
+  .sh.hold { --hs: 32 90%; }
+  .sh.done { --hs: 135 60%; }
+  .sh option { color: hsl(var(--card-foreground)); background: hsl(var(--card)); font-weight: 400; }
+  .sticky.is-done { opacity: .62; }
+  /* Drag and drop: stickies reorder within a zone and move between zones. */
+  .sticky[draggable] { cursor: grab; }
+  .sticky.dragging { opacity: .35; }
+  .sticky.drop-before { box-shadow: -5px 0 0 -1px hsl(var(--ring)), 2px 4px 8px -2px hsl(0 0% 0% / .2); }
+  .sticky.drop-after { box-shadow: 5px 0 0 -1px hsl(var(--ring)), 2px 4px 8px -2px hsl(0 0% 0% / .2); }
+  .zone.drop { border-color: hsl(var(--ring)); border-style: solid; }
   .note { min-height: 96px; font-size: 14px; }
   .note span { overflow-wrap: anywhere; white-space: pre-wrap; }
   .note .st-edit { justify-self: start; font-size: 11.5px; }
@@ -204,13 +226,15 @@
   dialog label { display: grid; gap: 3px; font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); }
   dialog .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   dialog fieldset { border: 1px solid hsl(var(--border)); border-radius: 8px; margin: 0; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; max-height: 132px; overflow: auto; }
+  dialog summary { cursor: pointer; font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); }
+  dialog .more { display: grid; gap: 10px; margin-top: 10px; }
   dialog legend { font-size: 12px; font-weight: 600; color: hsl(var(--muted-foreground)); padding: 0 4px; }
   dialog fieldset label { display: flex; align-items: center; gap: 5px; font-weight: 400; color: hsl(var(--foreground)); }
 
-  @media (min-width: 1900px) { .wb { grid-template-columns: repeat(18, minmax(0, 1fr)); } }
+  @media (min-width: 1900px) { .wb { grid-template-columns: repeat(24, minmax(0, 1fr)); } }
   @media (max-width: 1100px) {
     .wb { grid-template-columns: minmax(0, 1fr); }
-    .zone.s2, .zone.s3, .zone.s4, .zone.s5 { grid-column: auto; }
+    .wb .zone { grid-column: auto; }
   }
 </style>
 </head>
@@ -223,6 +247,7 @@
   <span class="spacer"></span>
   <button class="btn btn--primary" id="btn-add" title="Add an initiative sticky">+ Initiative</button>
   <button class="btn" id="btn-zone" title="Add a zone to group initiatives">+ Zone</button>
+  <button class="btn" id="btn-theme" title="Theme for this page only: light, dark, or match the dashboard"></button>
   <button class="btn" id="btn-export" title="Download the whiteboard as JSON">Export</button>
   <button class="btn" id="btn-import" title="Replace this page's data from a JSON export">Import</button>
   <input type="file" id="file-import" accept="application/json,.json" hidden />
@@ -231,7 +256,7 @@
 
 <main>
   <section aria-label="Initiative whiteboard">
-    <div class="sechead"><span class="kicker">Initiatives</span><span class="hint">Click a sticky's name to edit it. Arrows show what feeds what.</span></div>
+    <div class="sechead"><span class="kicker">Initiatives</span><span class="hint">Click a sticky's name to edit it. Drag a sticky to reorder it or move it to another zone. Arrows show what feeds what.</span></div>
     <div class="wb" id="wb"></div>
   </section>
 </main>
@@ -241,17 +266,23 @@
     <h3 id="dlg-title">Initiative</h3>
     <label>Name <input type="text" id="f-name" maxlength="60" required /></label>
     <div class="row2">
-      <label>Subtitle <input type="text" id="f-sub" maxlength="40" placeholder="Optional" /></label>
-      <label>Jira epic <input type="text" id="f-epic" maxlength="20" placeholder="LA-12345" /></label>
-    </div>
-    <div class="row2">
       <label>Zone <select id="f-zone"></select></label>
-      <label>Horizon <select id="f-h"></select></label>
+      <label>Status <select id="f-status"></select></label>
     </div>
+    <label>Details <textarea id="f-details" rows="3" maxlength="600" placeholder="Scope, anything worth remembering"></textarea></label>
     <label>Next step <input type="text" id="f-note" maxlength="80" /></label>
-    <label>Details <textarea id="f-details" rows="3" maxlength="600" placeholder="Scope, status, anything worth remembering"></textarea></label>
-    <label>Links, one per line as "Label | URL" <textarea id="f-links" rows="3" placeholder="Confluence page | https://…"></textarea></label>
-    <fieldset><legend>Feeds into</legend><div id="f-feeds" style="display:contents"></div></fieldset>
+    <!-- Optional fields stay folded away; opened automatically when one is filled in. -->
+    <details id="f-more">
+      <summary>More: subtitle, Jira epic, links, feeds into</summary>
+      <div class="more">
+        <div class="row2">
+          <label>Subtitle <input type="text" id="f-sub" maxlength="40" /></label>
+          <label>Jira epic <input type="text" id="f-epic" maxlength="20" placeholder="LA-12345" /></label>
+        </div>
+        <label>Links, one per line as "Label | URL" <textarea id="f-links" rows="2" placeholder="Confluence page | https://…"></textarea></label>
+        <fieldset><legend>Feeds into</legend><div id="f-feeds" style="display:contents"></div></fieldset>
+      </div>
+    </details>
     <div class="acts">
       <button type="button" class="btn btn--ghost" id="f-del">Delete</button>
       <span class="spacer"></span>
@@ -267,14 +298,24 @@
   // ════════════════════════════════════════════════════════════════════
   //  initiatives.html — whiteboard of initiatives.
   //  Stickies grouped in zones, arrows for what feeds what, and free notes.
-  //  Each sticky carries details, a next step, a horizon, a Jira epic and links.
+  //  Each sticky carries details, a next step, a status, a Jira epic and links.
+  //  Stickies drag to reorder within a zone or move to another zone.
   //  Vanilla, offline, file:// safe. Own storage key so the dashboard's
   //  tarmac:state is never written from here.
   // ════════════════════════════════════════════════════════════════════
   const KEY = "tarmac:initiatives";
-  const VERSION = 2; // v2: starts empty, v1 placeholder stickies are dropped
+  const VERSION = 3; // v2: starts empty, v1 placeholder stickies are dropped. v3: horizon became status
   const JIRA = "https://insightsoftware.atlassian.net/browse/";
-  const HORIZONS = [["", "Unsorted"], ["now", "Now"], ["next", "Next"], ["later", "Later"], ["parked", "Parked"]];
+  const STATUSES = [["proposed", "Proposed"], ["planned", "Planned"], ["progress", "In progress"], ["hold", "On hold"], ["done", "Done"]];
+  // Zone width: "auto" follows how many stickies the zone holds, "1".."4" pins it
+  // to that many stickies wide, "full" takes the whole row.
+  const ZONE_WIDTHS = [["auto", "Auto width"], ["1", "1 wide"], ["2", "2 wide"], ["3", "3 wide"], ["4", "4 wide"], ["full", "Full row"]];
+  // v2 stored a horizon instead; old boards map across on load.
+  const HORIZON_TO_STATUS = { now: "progress", next: "planned", later: "proposed", parked: "hold" };
+  // This page's own theme; "match" follows whatever the dashboard uses.
+  const THEMES = [["light", "Light"], ["dark", "Dark"], ["match", "Match dashboard"]];
+  const statusOf = (i) => (STATUSES.some(s => s[0] === i.status) ? i.status : HORIZON_TO_STATUS[i.horizon] || "proposed");
+  const statusOptions = (current) => STATUSES.map(([v, n]) => `<option value="${v}"${v === current ? " selected" : ""}>${n}</option>`).join("");
 
   const $ = (s) => document.querySelector(s);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -303,7 +344,7 @@
   // ── state ──────────────────────────────────────────────────────────
   // A fresh board is one empty zone; initiatives are added by hand.
   function seed() {
-    return { version: VERSION, zones: [{ id: "general", name: "General" }], initiatives: [], deps: [], notes: [] };
+    return { version: VERSION, zones: [{ id: "general", name: "General" }], initiatives: [], deps: [], notes: [], theme: "light" };
   }
   // v1 shipped with placeholder stickies and zones under these ids.
   const V1_SEED_INITIATIVES = new Set(["api", "mcp", "agent", "abs", "ds", "ui", "ux", "dash", "adapt", "repiw", "email", "nfr"]);
@@ -313,7 +354,7 @@
   function normalize(raw) {
     const o = looksLikeState(raw) ? raw : seed();
     const v1 = !(Number(o.version) >= 2);
-    let zones = o.zones.filter(z => z && z.id && str(z.name, 40)).map(z => ({ id: String(z.id), name: str(z.name, 40) }));
+    let zones = o.zones.filter(z => z && z.id && str(z.name, 40)).map(z => ({ id: String(z.id), name: str(z.name, 40), width: ZONE_WIDTHS.some(w => w[0] === z.width) ? z.width : "auto" }));
     if (!zones.length) zones = [{ id: "general", name: "General" }];
     const zoneIds = new Set(zones.map(z => z.id));
     const initiatives = o.initiatives.filter(i => i && i.id && str(i.name, 60) && !(v1 && V1_SEED_INITIATIVES.has(String(i.id)))).map(i => ({
@@ -321,7 +362,7 @@
       zone: zoneIds.has(i.zone) ? i.zone : zones[0].id,
       name: str(i.name, 60),
       sub: str(i.sub, 40),
-      horizon: HORIZONS.some(h => h[0] === i.horizon) ? i.horizon : "",
+      status: statusOf(i),
       note: str(i.note, 80),
       details: str(i.details, 600),
       epic: /^[A-Z][A-Z0-9]+-\d+$/.test(str(i.epic, 20)) ? str(i.epic, 20) : "",
@@ -335,7 +376,8 @@
     }
     const deps = (Array.isArray(o.deps) ? o.deps : []).filter(d => Array.isArray(d) && ids.has(d[0]) && ids.has(d[1]) && d[0] !== d[1]).map(d => [d[0], d[1]]);
     const notes = (Array.isArray(o.notes) ? o.notes : []).filter(n => n && n.id && str(n.text, 200)).map(n => ({ id: String(n.id), text: str(n.text, 200) }));
-    return { version: VERSION, zones, initiatives, deps, notes };
+    const theme = THEMES.some(t => t[0] === o.theme) ? o.theme : "light";
+    return { version: VERSION, zones, initiatives, deps, notes, theme };
   }
   function normalizeLinks(list) {
     return (Array.isArray(list) ? list : []).filter(l => l && safeUrl(l.url) !== "#").slice(0, 12)
@@ -356,15 +398,24 @@
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast("Couldn't save (storage full or blocked)."); } }
   function mutate(fn) { fn(state); save(); render(); }
 
-  // Read-only peek at the dashboard's theme.
+  // Uses this page's theme, or a read-only peek at the dashboard's when set to match.
   function applyTheme() {
-    let t = "system";
-    try { t = (JSON.parse(localStorage.getItem("tarmac:state") || "null") || {}).theme || "system"; } catch (e) {}
+    let t = state.theme;
+    if (t === "match") {
+      t = "system";
+      try { t = (JSON.parse(localStorage.getItem("tarmac:state") || "null") || {}).theme || "system"; } catch (e) {}
+    }
+    $("#btn-theme").textContent = "Theme: " + THEMES.find(x => x[0] === state.theme)[1];
     const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.classList.toggle("dark", dark && t !== "glass");
     document.documentElement.classList.toggle("liquid-glass", t === "glass");
   }
 
+  function zoneSpanClass(zone, count) {
+    if (zone.width === "full") return "full";
+    const wide = Number(zone.width) || Math.max(1, count);
+    return "s" + Math.min(12, 2 * wide + 1);
+  }
   const zoneClass = (zoneId) => "z" + (Math.max(0, state.zones.findIndex(z => z.id === zoneId)) % 6);
 
   // ── whiteboard ─────────────────────────────────────────────────────
@@ -372,12 +423,12 @@
     const id = escapeHtml(i.id);
     const epic = i.epic ? `<a href="${JIRA}${escapeHtml(i.epic)}" target="_blank" rel="noopener">${escapeHtml(i.epic)} ↗</a>` : "";
     const links = i.links.map(l => `<a href="${escapeHtml(safeUrl(l.url))}" target="_blank" rel="noopener">${escapeHtml(l.label)} ↗</a>`).join("");
-    return `<div class="sticky ${zoneClass(i.zone)}" data-s="${id}">
+    return `<div class="sticky ${zoneClass(i.zone)}${i.status === "done" ? " is-done" : ""}" data-s="${id}" draggable="true">
       <button type="button" class="sn" data-edit="${id}" title="Edit">${escapeHtml(i.name)}${i.sub ? `<small>${escapeHtml(i.sub)}</small>` : ""}</button>
       ${i.details ? `<div class="sd">${escapeHtml(i.details)}</div>` : ""}
       ${epic || links ? `<div class="links">${epic}${links}</div>` : ""}
       <input class="snote" type="text" maxlength="80" placeholder="Next step" data-note="${id}" aria-label="Next step for ${escapeHtml(i.name)}" value="${escapeHtml(i.note)}" />
-      <select class="sh ${i.horizon}" data-h="${id}" aria-label="Horizon for ${escapeHtml(i.name)}">${HORIZONS.map(([v, n]) => `<option value="${v}"${v === i.horizon ? " selected" : ""}>${n}</option>`).join("")}</select>
+      <select class="sh ${i.status}" data-status="${id}" aria-label="Status of ${escapeHtml(i.name)}">${statusOptions(i.status)}</select>
     </div>`;
   }
   let boardDirty = false;
@@ -387,15 +438,16 @@
     if (!force && a && a.tagName === "INPUT" && wb.contains(a)) { boardDirty = true; return; }
     boardDirty = false;
     wb.innerHTML = `<svg id="arrows" aria-hidden="true"></svg>` + state.zones.map(z => {
-      const list = state.initiatives.filter(i => i.zone === z.id), span = Math.max(2, Math.min(5, list.length));
-      return `<div class="zone s${span}">
+      const list = state.initiatives.filter(i => i.zone === z.id);
+      return `<div class="zone ${zoneSpanClass(z, list.length)}" data-z="${escapeHtml(z.id)}">
         <div class="zl"><span>${escapeHtml(z.name)}</span>
           <button type="button" class="btn btn--sm btn--ghost" data-zone-edit="${escapeHtml(z.id)}" title="Rename zone">✎</button>
           <button type="button" class="btn btn--sm btn--ghost" data-zone-rm="${escapeHtml(z.id)}" title="Remove zone">✕</button>
+          <select class="zw" data-zone-w="${escapeHtml(z.id)}" aria-label="Width of ${escapeHtml(z.name)}" title="Zone width">${ZONE_WIDTHS.map(([v, n]) => `<option value="${v}"${v === (z.width || "auto") ? " selected" : ""}>${n}</option>`).join("")}</select>
         </div>
         ${list.length ? `<div class="stickies">${list.map(stickyHtml).join("")}</div>` : `<div class="hint">No initiatives here yet. Use + Initiative to add one.</div>`}
       </div>`;
-    }).join("") + `<div class="zone s4">
+    }).join("") + `<div class="zone s9">
       <div class="zl"><span>Notes</span></div>
       ${state.notes.length ? `<div class="stickies">${state.notes.map(n => `<div class="sticky note znote"><span>${escapeHtml(n.text)}</span><button type="button" class="st-edit" data-note-rm="${escapeHtml(n.id)}">Remove</button></div>`).join("")}</div>`
         : `<div class="hint">Risks, decisions and open questions go here.</div>`}
@@ -435,11 +487,12 @@
     $("#f-name").value = i ? i.name : "";
     $("#f-sub").value = i ? i.sub : "";
     $("#f-epic").value = i ? i.epic : "";
-    $("#f-note").value = i ? i.note : "";
     $("#f-details").value = i ? i.details : "";
+    $("#f-note").value = i ? i.note : "";
     $("#f-links").value = i ? i.links.map(l => `${l.label} | ${l.url}`).join("\n") : "";
     $("#f-zone").innerHTML = state.zones.map(z => `<option value="${escapeHtml(z.id)}"${i && i.zone === z.id ? " selected" : ""}>${escapeHtml(z.name)}</option>`).join("");
-    $("#f-h").innerHTML = HORIZONS.map(([v, n]) => `<option value="${v}"${i && i.horizon === v ? " selected" : ""}>${n}</option>`).join("");
+    $("#f-status").innerHTML = statusOptions(i ? i.status : "proposed");
+    $("#f-more").open = !!i && !!(i.sub || i.epic || i.links.length || state.deps.some(d => d[0] === i.id));
     const others = state.initiatives.filter(x => x.id !== editing);
     $("#f-feeds").innerHTML = others.length ? others.map(x =>
       `<label><input type="checkbox" value="${escapeHtml(x.id)}"${i && state.deps.some(d => d[0] === i.id && d[1] === x.id) ? " checked" : ""} />${escapeHtml(x.name)}</label>`).join("")
@@ -452,12 +505,12 @@
     e.preventDefault();
     const name = $("#f-name").value.trim(), epic = $("#f-epic").value.trim().toUpperCase();
     if (!name) return;
-    if (epic && !/^[A-Z][A-Z0-9]+-\d+$/.test(epic)) { toast("Jira epic should look like LA-12345."); $("#f-epic").focus(); return; }
+    if (epic && !/^[A-Z][A-Z0-9]+-\d+$/.test(epic)) { toast("Jira epic should look like LA-12345."); $("#f-more").open = true; $("#f-epic").focus(); return; }
     const feeds = [...$("#f-feeds").querySelectorAll("input:checked")].map(c => c.value);
     mutate(s => {
       let i = s.initiatives.find(x => x.id === editing);
       if (!i) { i = { id: uid() }; s.initiatives.push(i); }
-      Object.assign(i, { name: name.slice(0, 60), sub: $("#f-sub").value.trim().slice(0, 40), epic, zone: $("#f-zone").value, horizon: $("#f-h").value, note: $("#f-note").value.trim().slice(0, 80),
+      Object.assign(i, { name: name.slice(0, 60), note: $("#f-note").value.trim().slice(0, 80), sub: $("#f-sub").value.trim().slice(0, 40), epic, zone: $("#f-zone").value, status: $("#f-status").value,
         details: $("#f-details").value.trim().slice(0, 600), links: parseLinks($("#f-links").value) });
       s.deps = s.deps.filter(d => d[0] !== i.id).concat(feeds.map(f => [i.id, f]));
     });
@@ -473,6 +526,11 @@
 
   // ── events ─────────────────────────────────────────────────────────
   $("#btn-add").addEventListener("click", () => openInitiative(null));
+  $("#btn-theme").addEventListener("click", () => {
+    const at = THEMES.findIndex(t => t[0] === state.theme);
+    mutate(s => { s.theme = THEMES[(at + 1) % THEMES.length][0]; });
+    applyTheme();
+  });
   $("#btn-zone").addEventListener("click", () => {
     const name = str(prompt("Name of the new zone"), 40); if (!name) return;
     mutate(s => { s.zones.push({ id: uid(), name }); });
@@ -504,10 +562,69 @@
     });
   }
   $("#wb").addEventListener("change", (e) => {
-    const d = e.target.dataset, id = d.h !== undefined ? d.h : d.note, i = state.initiatives.find(x => x.id === id);
+    if (e.target.dataset.zoneW !== undefined) {
+      const z = state.zones.find(x => x.id === e.target.dataset.zoneW);
+      if (z) mutate(() => { z.width = e.target.value; });
+      return;
+    }
+    const d = e.target.dataset, id = d.status !== undefined ? d.status : d.note, i = state.initiatives.find(x => x.id === id);
     if (!i) return;
-    if (d.h !== undefined) mutate(() => { i.horizon = e.target.value; });
+    if (d.status !== undefined) mutate(() => { i.status = e.target.value; });
     else mutate(() => { i.note = e.target.value.trim().slice(0, 80); });
+  });
+
+  // ── drag and drop ──────────────────────────────────────────────────
+  // Order inside a zone is the order in state.initiatives, so a drop is one
+  // splice: onto a sticky lands beside it, onto empty zone space lands last.
+  let dragId = null, pressedOn = null;
+  const clearDropMarks = () => $("#wb").querySelectorAll(".drop-before, .drop-after, .drop").forEach(el => el.classList.remove("drop-before", "drop-after", "drop"));
+  // Where a drag at this point would land: { zone, before } or null outside the zones.
+  function dropTarget(e) {
+    const zoneEl = e.target.closest("[data-z]"); if (!zoneEl) return null;
+    const over = e.target.closest("[data-s]");
+    if (!over || over.dataset.s === dragId) return { zoneEl, over: null, after: false };
+    const r = over.getBoundingClientRect();
+    return { zoneEl, over, after: e.clientX > r.left + r.width / 2 };
+  }
+  $("#wb").addEventListener("pointerdown", (e) => { pressedOn = e.target; });
+  $("#wb").addEventListener("dragstart", (e) => {
+    const s = e.target.closest && e.target.closest("[data-s]");
+    // Typing, picking a status and dragging a link out keep their normal behaviour.
+    if (!s || e.target !== s) return;
+    if (pressedOn && pressedOn.closest("input, select")) { e.preventDefault(); return; }
+    dragId = s.dataset.s;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragId);
+    setTimeout(() => s.classList.add("dragging"), 0);
+  });
+  $("#wb").addEventListener("dragover", (e) => {
+    if (!dragId) return;
+    const t = dropTarget(e);
+    clearDropMarks();
+    if (!t) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (t.over) t.over.classList.add(t.after ? "drop-after" : "drop-before");
+    else t.zoneEl.classList.add("drop");
+  });
+  $("#wb").addEventListener("drop", (e) => {
+    if (!dragId) return;
+    const t = dropTarget(e); if (!t) return;
+    e.preventDefault();
+    const id = dragId, zone = t.zoneEl.dataset.z, overId = t.over ? t.over.dataset.s : null, after = t.after;
+    dragId = null;
+    mutate(s => {
+      const from = s.initiatives.findIndex(x => x.id === id); if (from < 0) return;
+      const [item] = s.initiatives.splice(from, 1);
+      item.zone = zone;
+      const at = overId ? s.initiatives.findIndex(x => x.id === overId) : -1;
+      if (at < 0) s.initiatives.push(item);
+      else s.initiatives.splice(at + (after ? 1 : 0), 0, item);
+    });
+  });
+  $("#wb").addEventListener("dragend", () => {
+    dragId = null; clearDropMarks();
+    $("#wb").querySelectorAll(".dragging").forEach(el => el.classList.remove("dragging"));
   });
   $("#wb").addEventListener("submit", (e) => {
     if (e.target.id !== "note-form") return;
@@ -533,15 +650,14 @@
       const o = JSON.parse(t);
       if (!looksLikeState(o)) throw new Error("not an initiatives export");
       if (!confirm("Replace the whiteboard with this file?")) return;
-      state = normalize(o); save(); render(true); toast("Imported.");
+      state = normalize(o); save(); applyTheme(); render(true); toast("Imported.");
     }).catch(err => toast("Import failed: " + err.message)).finally(() => { e.target.value = ""; });
   });
 
   // Stay in sync with the other pages and tabs.
   window.addEventListener("storage", (e) => {
     if (e.key === "tarmac:state") applyTheme();
-    if (e.key === KEY) state = load();
-    if (e.key === KEY) render();
+    if (e.key === KEY) { state = load(); applyTheme(); render(); }
   });
 
   applyTheme();
